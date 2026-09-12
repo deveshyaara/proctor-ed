@@ -60,6 +60,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
         durationSeconds: test.durationSeconds,
         testCode,
         cameraRequired: (test.settings as { cameraRequired?: boolean } | null)?.cameraRequired ?? true,
+        fullscreenRequired: (test.settings as { fullscreenRequired?: boolean } | null)?.fullscreenRequired ?? true,
       },
     });
   } catch {

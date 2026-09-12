@@ -20,15 +20,26 @@ const serverEnvSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
   // Neon Auth environment variables
-  NEON_AUTH_BASE_URL: z.string().url("NEON_AUTH_BASE_URL must be a valid URL"),
+  NEON_AUTH_BASE_URL: z
+    .string()
+    .url("NEON_AUTH_BASE_URL must be a valid URL")
+    .transform((url) => url.replace(/\/+$/, "")),
   NEON_AUTH_COOKIE_SECRET: z
     .string()
     .min(32, "NEON_AUTH_COOKIE_SECRET must be at least 32 characters"),
-  NEON_AUTH_JWKS_URL: z.string().url("NEON_AUTH_JWKS_URL must be a valid URL").optional(),
+  NEON_AUTH_JWKS_URL: z
+    .string()
+    .url("NEON_AUTH_JWKS_URL must be a valid URL")
+    .optional()
+    .transform((url) => (url ? url.replace(/\/+$/, "") : undefined)),
 
   // Legacy NextAuth environment variables (kept temporarily during transition)
   AUTH_SECRET: z.string().min(32).optional(),
-  AUTH_URL: z.string().url().optional(),
+  AUTH_URL: z
+    .string()
+    .url()
+    .optional()
+    .transform((url) => (url ? url.replace(/\/+$/, "") : undefined)),
 
   STORAGE_PROVIDER: z.enum(["local", "s3"]).default("local"),
 
@@ -43,7 +54,8 @@ const clientEnvSchema = z.object({
   NEXT_PUBLIC_APP_URL: z
     .string()
     .url("NEXT_PUBLIC_APP_URL must be a valid URL")
-    .default("http://localhost:3000"),
+    .default("http://localhost:3000")
+    .transform((url) => url.replace(/\/+$/, "")),
 });
 
 // ---------------------------------------------------------------------------

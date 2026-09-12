@@ -37,7 +37,7 @@ function getSignInErrorMessage(status: number, failure: SignInFailure): string {
     case "EMAIL_NOT_VERIFIED":
       return "Verify your email before signing in. Use the verification code from signup, then try again.";
     case "FORBIDDEN":
-      return "This sign-in is valid, but the account is not authorized for the ProctorED teacher dashboard.";
+      return failure.message || "This sign-in is valid, but the account is not authorized for the ProctorED teacher dashboard.";
     case "RATE_LIMITED":
     case "TOO_MANY_REQUESTS":
       return "Too many sign-in attempts. Wait a few minutes before trying again.";
@@ -46,8 +46,9 @@ function getSignInErrorMessage(status: number, failure: SignInFailure): string {
     case "AUTH_SERVICE_UNAVAILABLE":
       return "The authentication service is temporarily unavailable. Try again in a moment.";
     default:
+      if (failure.message) return failure.message;
       if (status === 401) return "The email or password is incorrect.";
-      if (status === 403) return "This account is not authorized for the ProctorED teacher dashboard.";
+      if (status === 403) return failure.message || "This account is not authorized or origin is not allowed by the authentication provider.";
       if (status === 400) return "Check your email and password, then try again.";
       if (status >= 500) return "The authentication service is temporarily unavailable. Try again in a moment.";
       return "The sign-in service is unavailable. Try again in a moment.";

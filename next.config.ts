@@ -20,7 +20,7 @@ const nextConfig: NextConfig = {
 
   // Allow .env.local to override environment variables
   env: {
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+    NEXT_PUBLIC_APP_URL: (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/+$/, ""),
   },
 
   // Security headers applied to all responses.

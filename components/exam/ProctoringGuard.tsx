@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
+import {
+  isFullscreenActive,
+  requestBrowserFullscreen,
+} from "@/lib/exam/fullscreen";
 
 interface ProctoringGuardProps {
   attemptId: string;
@@ -27,10 +31,7 @@ export function ProctoringGuard({
     message: string;
   } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
-    if (typeof document !== "undefined") {
-      return Boolean(document.fullscreenElement);
-    }
-    return false;
+    return isFullscreenActive();
   });
 
   // Debounce ref to prevent duplicate event logs within 3 seconds
@@ -123,7 +124,7 @@ export function ProctoringGuard({
     if (!fullscreenRequired) return;
 
     const handleFullscreenChange = () => {
-      const isFs = !!document.fullscreenElement;
+      const isFs = isFullscreenActive();
       setIsFullscreen(isFs);
       if (!isFs) {
         reportViolation(
@@ -140,8 +141,15 @@ export function ProctoringGuard({
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
     };
   }, [fullscreenRequired, reportViolation]);
 
@@ -173,14 +181,10 @@ export function ProctoringGuard({
   }, [reportViolation]);
 
   const requestFullscreen = async () => {
-    try {
-      if (document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-        setCurrentViolation(null);
-      }
-    } catch {
-      // Fullscreen request denied or not supported
+    const success = await requestBrowserFullscreen();
+    if (success) {
+      setIsFullscreen(true);
+      setCurrentViolation(null);
     }
   };
 

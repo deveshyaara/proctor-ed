@@ -62,7 +62,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     // Attempt is CREATED -> Initialize examination
-    const settings = test.settings as { randomizeQuestions?: boolean; randomizeOptions?: boolean };
+    const body = await req.json().catch(() => ({}));
+    const fullscreenConfirmed = Boolean(body?.fullscreenConfirmed);
+    const settings = test.settings as {
+      randomizeQuestions?: boolean;
+      randomizeOptions?: boolean;
+      fullscreenRequired?: boolean;
+    };
 
     // Generate and persist shuffle orders server-side
     const questionIds = test.questions.map((q) => q.id);
@@ -85,6 +91,18 @@ export async function POST(req: NextRequest, { params }: Params) {
         lastHeartbeatAt: now,
       },
     });
+
+    // Server-side integrity check: log if student started without client fullscreen verification
+    if (settings.fullscreenRequired !== false && !fullscreenConfirmed) {
+      await prisma.proctoringEvent.create({
+        data: {
+          attemptId: id,
+          eventType: "FULLSCREEN_EXIT",
+          severity: "MEDIUM",
+          description: "Attempt started without client fullscreen confirmation.",
+        },
+      });
+    }
 
     const studentQuestions = toStudentQuestions(test.questions, questionOrder, optionOrderMap);
 
