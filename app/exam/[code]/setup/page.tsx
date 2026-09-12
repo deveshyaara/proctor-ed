@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use, useEffect, useRef } from "react";
+import { useState, use, useEffect, useRef, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CameraSetup } from "@/components/exam/CameraSetup";
@@ -12,6 +12,18 @@ import {
   requestBrowserFullscreen,
   exitBrowserFullscreen,
 } from "@/lib/exam/fullscreen";
+
+const emptySubscribe = () => () => {};
+
+function getDeviceErrorSnapshot(): string | null {
+  if (isIPhoneDevice()) {
+    return "iPhones are not supported for proctored examinations. Apple iOS does not support the Fullscreen API required for exam integrity. Please use a laptop, desktop computer, or iPad to complete this examination.";
+  }
+  if (!isFullscreenSupported()) {
+    return "Your browser does not support the Fullscreen API required for proctored examinations. Please open this examination in Google Chrome, Mozilla Firefox, or Apple Safari.";
+  }
+  return null;
+}
 
 export default function ExamSetupPage({
   params,
@@ -27,7 +39,13 @@ export default function ExamSetupPage({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cameraRequired, setCameraRequired] = useState(true);
   const [fullscreenRequired, setFullscreenRequired] = useState(true);
-  const [deviceError, setDeviceError] = useState<string | null>(null);
+
+  const clientDeviceError = useSyncExternalStore(
+    emptySubscribe,
+    getDeviceErrorSnapshot,
+    () => null
+  );
+  const deviceError = fullscreenRequired ? clientDeviceError : null;
 
   // Double-click guard ref
   const startingRef = useRef(false);
@@ -47,21 +65,6 @@ export default function ExamSetupPage({
         // Keep secure defaults when test metadata is unavailable.
       });
   }, [code]);
-
-  // Check device and browser capabilities on mount
-  useEffect(() => {
-    if (!fullscreenRequired) return;
-
-    if (isIPhoneDevice()) {
-      setDeviceError(
-        "iPhones are not supported for proctored examinations. Apple iOS does not support the Fullscreen API required for exam integrity. Please use a laptop, desktop computer, or iPad to complete this examination."
-      );
-    } else if (!isFullscreenSupported()) {
-      setDeviceError(
-        "Your browser does not support the Fullscreen API required for proctored examinations. Please open this examination in Google Chrome, Mozilla Firefox, or Apple Safari."
-      );
-    }
-  }, [fullscreenRequired]);
 
   if (!attemptId) {
     return (
