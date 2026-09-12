@@ -1,0 +1,67 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Testing & Reports
+/coverage
+/playwright-report
+/test-results
+/blob-report
+/playwright/.cache
+
+# Next.js build & output
+/.next/
+/out/
+/build
+/dist
+
+# Local storage, scratch & artifacts
+/storage
+/scratch
+/artifacts
+/tmp
+/temp
+
+# Environment variables
+.env*.local
+.env
+.env.production
+.env.test
+.env.development
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs & Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# Vercel
+.vercel
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+*.pem
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json

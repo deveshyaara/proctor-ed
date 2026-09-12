@@ -1,0 +1,257 @@
+// ProctorED — Prisma Schema
+// Production-quality schema for online proctored tuition test platform.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum Role {
+  TEACHER
+  ADMIN
+}
+
+enum TestStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  NUMERICAL
+  SHORT_ANSWER
+}
+
+enum AttemptStatus {
+  CREATED
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED
+  TERMINATED
+  EXPIRED
+}
+
+enum ProctoringEventType {
+  TAB_SWITCH
+  FULLSCREEN_EXIT
+  CAMERA_DISCONNECTED
+  CAMERA_RECONNECTED
+  PERSON_MISSING
+  MULTIPLE_PEOPLE
+  PHONE_DETECTED
+  FACE_NOT_VISIBLE
+  SUSPICIOUS_OBJECT
+  COPY_PASTE_DETECTED
+  PRINT_ATTEMPTED
+  OTHER
+}
+
+enum ProctoringEventSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ReviewStatus {
+  UNREVIEWED
+  CONFIRMED
+  FALSE_POSITIVE
+  IGNORED
+}
+
+// ─────────────────────────────────────────
+// USER (Teacher / Admin)
+// ─────────────────────────────────────────
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  passwordHash   String?
+  neonAuthUserId String?  @unique
+  role           Role     @default(TEACHER)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tests Test[]
+
+  @@index([email])
+  @@index([neonAuthUserId])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────
+// TEST
+// ─────────────────────────────────────────
+
+model Test {
+  id              String     @id @default(cuid())
+  teacherId       String
+  title           String
+  subject         String
+  className       String
+  description     String?
+  testCode        String     @unique
+  durationSeconds Int        // Duration in seconds (e.g. 2700 = 45 min)
+  status          TestStatus @default(DRAFT)
+  startAt         DateTime?  // Optional: test window opens at
+  endAt           DateTime?  // Optional: test window closes at
+  maxAttempts     Int        @default(1)
+  settings        Json       // TestSettings JSON, validated with Zod
+  publishedAt     DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  teacher   User       @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  questions Question[]
+  attempts  Attempt[]
+
+  @@index([teacherId])
+  @@index([status])
+  @@index([testCode])
+  @@map("tests")
+}
+
+// ─────────────────────────────────────────
+// QUESTION
+// ─────────────────────────────────────────
+
+model Question {
+  id            String       @id @default(cuid())
+  testId        String
+  type          QuestionType
+  questionText  String
+  imageUrl      String?      // URL to securely stored image
+  imageKey      String?      // Storage object key (internal reference)
+  options       Json?        // For MCQ: string[] of option texts
+  correctAnswer String       // For MCQ: option index or text; for T/F: "true"/"false"; for NUM: number string; for SHORT: string
+  marks         Float        @default(1)
+  negativeMarks Float        @default(0)
+  explanation   String?      // Optional explanation shown after submission if enabled
+  order         Int          // Display order in test
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  test    Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@unique([testId, order])
+  @@index([testId])
+  @@map("questions")
+}
+
+// ─────────────────────────────────────────
+// ATTEMPT
+// ─────────────────────────────────────────
+
+model Attempt {
+  id                String        @id @default(cuid())
+  testId            String
+  studentName       String
+  rollNumber        String
+  accessTokenHash   String        // Hashed random token; raw token given to browser via HttpOnly cookie
+  startedAt         DateTime?     // Set when student actually starts (after camera check)
+  expiresAt         DateTime?     // startedAt + durationSeconds
+  submittedAt       DateTime?
+  lastHeartbeatAt   DateTime?
+  status            AttemptStatus @default(CREATED)
+  score             Float?        // Calculated server-side on submission
+  maxScore          Float?        // Sum of all question marks
+  riskScore         Int           @default(0)
+  warningCount      Int           @default(0)
+  questionOrder     Json?         // Persisted question ID order for randomization
+  optionOrderMap    Json?         // Persisted option order per question for randomization
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  test             Test             @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers          Answer[]
+  proctoringEvents ProctoringEvent[]
+
+  @@index([testId])
+  @@index([status])
+  @@index([accessTokenHash])
+  @@map("attempts")
+}
+
+// ─────────────────────────────────────────
+// ANSWER
+// ─────────────────────────────────────────
+
+model Answer {
+  id           String    @id @default(cuid())
+  attemptId    String
+  questionId   String
+  answer       String?   // Student's raw answer; null means unanswered
+  isCorrect    Boolean?  // Calculated server-side on submission
+  marksAwarded Float?    // Calculated server-side on submission
+  answeredAt   DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  attempt  Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@map("answers")
+}
+
+// ─────────────────────────────────────────
+// PROCTORING EVENT
+// ─────────────────────────────────────────
+
+model ProctoringEvent {
+  id                String                  @id @default(cuid())
+  attemptId         String
+  eventType         ProctoringEventType
+  severity          ProctoringEventSeverity
+  timestamp         DateTime                @default(now())
+  description       String?
+  confidence        Float?                  // AI confidence score (0-1); null for browser events
+  screenshotKey     String?                 // Private storage object key
+  screenshotUrl     String?                 // Presigned/signed URL (generated on demand, not stored long-term)
+  metadata          Json?                   // Additional event-specific data
+  reviewStatus      ReviewStatus            @default(UNREVIEWED)
+  teacherNotes      String?
+  reviewedAt        DateTime?
+  createdAt         DateTime                @default(now())
+
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@index([eventType])
+  @@index([reviewStatus])
+  @@map("proctoring_events")
+}
+
+// ─────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // e.g. "TEST_DELETED", "TEST_ARCHIVED", "TEST_RESTORED"
+  actorId    String   // teacher User ID
+  entityType String   // "Test"
+  entityId   String   // test ID
+  details    Json     // { testCode, title, submissionCount, questionsCount }
+  timestamp  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityId])
+  @@map("audit_logs")
+}
+

@@ -1,0 +1,32 @@
+# =============================================================================
+# ProctorED — Small-Scale Deployment Services
+#
+# Architecture note:
+# For small private tuition (~1 teacher, ~2 students), PostgreSQL is the only
+# external dependency. Redis and S3/MinIO are intentionally deferred.
+# See SCALING_ROADMAP.md when scaling to multiple instances or institutions.
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: proctor-ed-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: proctor_ed
+    ports:
+      - "5432:5432"
+    volumes:
+      - proctor_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d proctor_ed"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  proctor_data:
+
