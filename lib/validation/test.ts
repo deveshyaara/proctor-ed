@@ -113,10 +113,18 @@ export const proctoringEventSchema = z.object({
     "TAB_SWITCH", "FULLSCREEN_EXIT", "CAMERA_DISCONNECTED", "CAMERA_RECONNECTED",
     "PERSON_MISSING", "MULTIPLE_PEOPLE", "PHONE_DETECTED", "FACE_NOT_VISIBLE",
     "SUSPICIOUS_OBJECT", "COPY_PASTE_DETECTED", "PRINT_ATTEMPTED", "OTHER",
+    "PROLONGED_GAZE_DEVIATION", "CAMERA_CONDITION_WARNING",
   ]),
   severity: z.enum(["LOW", "MEDIUM", "HIGH"]),
   description: z.string().max(500).optional(),
   confidence: z.number().min(0).max(1).optional(),
+  metadata: z.object({
+    model: z.string().max(50),
+    modelVersion: z.string().max(20),
+    durationMs: z.number().int().nonnegative(),
+    faceCount: z.number().int().nonnegative().optional(),
+    confidence: z.number().min(0).max(1).optional(),
+  }).strict().optional(),
 });
 export type ProctoringEventInput = z.infer<typeof proctoringEventSchema>;
 

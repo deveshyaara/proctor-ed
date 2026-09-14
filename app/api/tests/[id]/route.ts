@@ -9,7 +9,14 @@ type Params = { params: Promise<{ id: string }> };
 async function getOwnedTest(teacherId: string, testId: string) {
   const test = await prisma.test.findUnique({
     where: { id: testId },
-    include: { _count: { select: { attempts: true, questions: true } } },
+    include: {
+      _count: {
+        select: {
+          attempts: { where: { status: { in: ["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED"] } } },
+          questions: true,
+        },
+      },
+    },
   });
   if (!test) throw { status: 404, code: "TEST_NOT_FOUND", message: "Test not found." };
   if (test.teacherId !== teacherId) {

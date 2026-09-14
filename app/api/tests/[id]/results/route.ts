@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({
       test: { id: test.id, title: test.title, subject: test.subject, className: test.className, durationSeconds: test.durationSeconds },
-      summary: { totalAttempts: items.length, avg, highest, lowest },
+      summary: { totalAttempts: allAttempts.length, avg, highest, lowest },
       attempts: items,
       nextCursor,
     });

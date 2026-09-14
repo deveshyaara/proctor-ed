@@ -130,12 +130,12 @@ export function ExamEngine({
   });
 
   const reportEvent = useCallback(
-    async (eventType: string, severity: "LOW" | "MEDIUM" | "HIGH", description: string) => {
+    async (eventType: string, severity: "LOW" | "MEDIUM" | "HIGH", description: string, metadata?: Record<string, unknown>) => {
       try {
         const res = await fetch(`/api/student/attempts/${attemptId}/event`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eventType, severity, description }),
+          body: JSON.stringify({ eventType, severity, description, metadata }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -363,12 +363,38 @@ export function ExamEngine({
           {/* Persistent Camera Feed Widget */}
           <ProctoringCameraFeed
             enabled={settings.cameraRequired}
-            onDisconnect={() => {
+            onDisconnect={useCallback(() => {
               reportEvent("CAMERA_DISCONNECTED", "HIGH", "Camera connection lost.");
-            }}
-            onReconnect={() => {
+            }, [reportEvent])}
+            onReconnect={useCallback(() => {
               reportEvent("CAMERA_RECONNECTED", "LOW", "Camera connection restored.");
-            }}
+            }, [reportEvent])}
+            onAIEvent={useCallback((type: string, confidence: number, durationMs: number, faceCount: number) => {
+              // Ensure type matches the Enum values
+              const severityMap: Record<string, "LOW" | "MEDIUM" | "HIGH"> = {
+                PERSON_MISSING: "MEDIUM",
+                MULTIPLE_PEOPLE: "HIGH",
+                PROLONGED_GAZE_DEVIATION: "MEDIUM",
+                CAMERA_CONDITION_WARNING: "LOW"
+              };
+              const severity = severityMap[type] || "LOW";
+              const descriptions: Record<string, string> = {
+                PERSON_MISSING: "No face detected in camera view.",
+                MULTIPLE_PEOPLE: "Multiple faces detected in camera view.",
+                PROLONGED_GAZE_DEVIATION: "Prolonged gaze deviation detected.",
+                CAMERA_CONDITION_WARNING: "Camera condition is poor (e.g., lighting or obstruction)."
+              };
+              
+              const metadata = {
+                model: "blazeface-1.0",
+                modelVersion: "1.0",
+                durationMs,
+                faceCount,
+                confidence
+              };
+              
+              reportEvent(type, severity, descriptions[type] || "AI detection triggered", metadata);
+            }, [reportEvent])}
           />
 
           <div className="bg-[#191916] border border-[rgba(244,240,231,0.08)] rounded-[16px] p-5 space-y-4">

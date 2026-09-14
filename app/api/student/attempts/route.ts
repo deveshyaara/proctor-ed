@@ -64,7 +64,40 @@ export async function POST(req: NextRequest) {
     const normalizedRoll = parsed.data.rollNumber.trim().toUpperCase();
     const normalizedName = parsed.data.studentName.trim();
 
+    // ── GAP-9 fix: re-attach to an existing IN_PROGRESS attempt if the cookie was lost ──
+    const activeAttempt = await prisma.attempt.findFirst({
+      where: { testId: test.id, rollNumber: normalizedRoll, status: "IN_PROGRESS" },
+    });
+
+    if (activeAttempt) {
+      // Re-issue a fresh token for the existing attempt so the student can re-enter
+      const freshRawToken = generateAttemptToken();
+      const freshHash = hashToken(freshRawToken);
+      await prisma.attempt.update({
+        where: { id: activeAttempt.id },
+        data: { accessTokenHash: freshHash },
+      });
+
+      const cookieName = attemptCookieName(activeAttempt.id);
+      const isSecure = process.env.NODE_ENV === "production" || req.headers.get("x-forwarded-proto") === "https";
+
+      const reattachResponse = NextResponse.json(
+        { attemptId: activeAttempt.id, testTitle: test.title, durationSeconds: test.durationSeconds },
+        { status: 200 }
+      );
+      reattachResponse.cookies.set(cookieName, freshRawToken, {
+        httpOnly: true,
+        secure: isSecure,
+        sameSite: "strict",
+        maxAge: 60 * 60 * 6,
+        path: "/",
+      });
+      return reattachResponse;
+    }
+
     // Transactional maxAttempts check and creation
+    // Only count active/terminal attempts (IN_PROGRESS, SUBMITTED, AUTO_SUBMITTED) — CREATED
+    // attempts have no answers and do not represent a meaningful prior attempt.
     const rawToken = generateAttemptToken();
     const accessTokenHash = hashToken(rawToken);
 
@@ -73,6 +106,7 @@ export async function POST(req: NextRequest) {
         where: {
           testId: test.id,
           rollNumber: normalizedRoll,
+          status: { in: ["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED"] },
         },
       });
 

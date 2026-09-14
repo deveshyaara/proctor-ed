@@ -8,11 +8,12 @@ interface DialogProps {
   onClose: () => void;
   title: string;
   description?: string;
+  maxWidth?: string;
   children?: React.ReactNode;
   actions?: React.ReactNode;
 }
 
-export function Dialog({ open, isOpen, onClose, title, description, children, actions }: DialogProps) {
+export function Dialog({ open, isOpen, onClose, title, description, maxWidth, children, actions }: DialogProps) {
   const isDialogOpen = Boolean(open ?? isOpen);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -57,7 +58,7 @@ export function Dialog({ open, isOpen, onClose, title, description, children, ac
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="relative z-10 w-full max-w-md bg-[#191916] border border-[rgba(244,240,231,0.1)] rounded-[16px] shadow-2xl outline-none"
+        className={`relative z-10 w-full ${maxWidth || "max-w-md"} bg-[#191916] border border-[rgba(244,240,231,0.1)] rounded-[16px] shadow-2xl outline-none`}
         style={{ animation: "dialogIn 150ms ease" }}
       >
         <div className="p-6 space-y-4">

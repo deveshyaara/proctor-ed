@@ -18,6 +18,8 @@ const AUTHORITATIVE_SEVERITIES: Record<string, "LOW" | "MEDIUM" | "HIGH"> = {
   SUSPICIOUS_OBJECT: "HIGH",
   COPY_PASTE_DETECTED: "MEDIUM",
   PRINT_ATTEMPTED: "MEDIUM",
+  PROLONGED_GAZE_DEVIATION: "MEDIUM", // Behavioral signal indicates potential looking at off-screen resources
+  CAMERA_CONDITION_WARNING: "LOW", // Quality/UX nudge, not a behavioral signal
   OTHER: "LOW",
 };
 
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Invalid input.", fields: parsed.error.flatten().fieldErrors } }, { status: 400 });
     }
 
-    const { eventType, description, confidence } = parsed.data;
+    const { eventType, description, confidence, metadata } = parsed.data;
     // Server enforces authoritative severity — client cannot downgrade HIGH violations
     const authoritativeSeverity = AUTHORITATIVE_SEVERITIES[eventType] ?? parsed.data.severity;
 
@@ -68,6 +70,7 @@ export async function POST(req: NextRequest, { params }: Params) {
             severity: authoritativeSeverity,
             description,
             confidence,
+            metadata,
             timestamp: serverTimestamp,
           },
         });

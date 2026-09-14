@@ -115,23 +115,24 @@ export default function ExamSetupPage({
     // 1. Instant double-click lock
     if (startingRef.current) return;
     startingRef.current = true;
-    setStarting(true);
-    setErrorMessage(null);
 
     // 2. Direct User Gesture: Request Fullscreen if required
+    // Do this FIRST before any state updates to preserve the user gesture token
     let enteredFullscreen = false;
     if (fullscreenRequired) {
       enteredFullscreen = await requestBrowserFullscreen();
 
       if (!enteredFullscreen) {
         startingRef.current = false;
-        setStarting(false);
         setErrorMessage(
           "Fullscreen mode is required to begin this examination. Please allow fullscreen access when prompted to continue."
         );
         return;
       }
     }
+
+    setStarting(true);
+    setErrorMessage(null);
 
     // 3. Set up in-flight exit monitor (in case student presses Esc while network call is pending)
     let exitedWhileInFlight = false;

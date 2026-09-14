@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { AIProctoringEngine } from "@/components/proctoring/AIProctoringEngine";
+import { EvidenceType } from "@/lib/ai/evidence/temporalSmoother";
 
 export type CameraStatus =
   | "CONNECTING"
@@ -14,12 +16,14 @@ interface ProctoringCameraFeedProps {
   enabled?: boolean;
   onDisconnect?: () => void;
   onReconnect?: () => void;
+  onAIEvent?: (type: EvidenceType, confidence: number, durationMs: number, faceCount: number) => void;
 }
 
 export function ProctoringCameraFeed({
   enabled = true,
   onDisconnect,
   onReconnect,
+  onAIEvent
 }: ProctoringCameraFeedProps) {
   const [status, setStatus] = useState<CameraStatus>("CONNECTING");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -28,6 +32,12 @@ export function ProctoringCameraFeed({
   const streamRef = useRef<MediaStream | null>(null);
   const isAcquiringRef = useRef(false);
   const hasDisconnectedRef = useRef(false);
+  const gazeUpdateCallbackRef = useRef<((gaze: any) => void) | null>(null);
+
+  const handlersRef = useRef({ onDisconnect, onReconnect, onAIEvent });
+  useEffect(() => {
+    handlersRef.current = { onDisconnect, onReconnect, onAIEvent };
+  }, [onDisconnect, onReconnect, onAIEvent]);
 
   const stopTracks = useCallback(() => {
     if (streamRef.current) {
@@ -78,7 +88,7 @@ export function ProctoringCameraFeed({
             setStatus("DISCONNECTED");
             hasDisconnectedRef.current = true;
             setErrorMessage("Camera connection lost.");
-            onDisconnect?.();
+            handlersRef.current.onDisconnect?.();
           };
         }
 
@@ -86,7 +96,7 @@ export function ProctoringCameraFeed({
 
         if (hasDisconnectedRef.current) {
           hasDisconnectedRef.current = false;
-          onReconnect?.();
+          handlersRef.current.onReconnect?.();
         }
       } catch (err: unknown) {
         const error = err as Error;
@@ -101,7 +111,7 @@ export function ProctoringCameraFeed({
         isAcquiringRef.current = false;
       }
     },
-    [enabled, stopTracks, onDisconnect, onReconnect]
+    [enabled, stopTracks]
   );
 
   useEffect(() => {
@@ -189,6 +199,49 @@ export function ProctoringCameraFeed({
           </div>
         )}
       </div>
+
+      <GazeStatusIndicator onRegister={(cb) => { gazeUpdateCallbackRef.current = cb; }} />
+
+      <AIProctoringEngine
+        videoRef={videoRef}
+        isStreamStable={status === "CONNECTED"}
+        onAIEvent={(type, confidence, durationMs, faceCount) => {
+          handlersRef.current.onAIEvent?.(type, confidence, durationMs, faceCount);
+        }}
+        onGazeUpdate={(gaze) => {
+          if (gazeUpdateCallbackRef.current) {
+            gazeUpdateCallbackRef.current(gaze);
+          }
+        }}
+      />
     </div>
   );
 }
+
+// WATCH ITEM 2: Isolated, memoized sub-component for gaze state
+// Updates purely locally without triggering re-renders of the parent camera feed,
+// ExamEngine, or question/option lists.
+const GazeStatusIndicator = ({ onRegister }: { onRegister: (cb: (gaze: any) => void) => void }) => {
+  const [gazeState, setGazeState] = useState<{ isDeviated: boolean; confidence: number } | null>(null);
+
+  useEffect(() => {
+    onRegister((gaze: any) => {
+      if (!gaze) {
+        setGazeState(null);
+      } else {
+        setGazeState({ isDeviated: gaze.isDeviated, confidence: gaze.confidence });
+      }
+    });
+  }, [onRegister]);
+
+  if (!gazeState) return null;
+
+  return (
+    <div className="flex items-center justify-between px-2 py-1 rounded-[6px] bg-[#11110F]/80 border border-[rgba(244,240,231,0.06)] text-[11px] font-mono">
+      <span className="text-[#AAA69B]">Gaze Tracking</span>
+      <span className={gazeState.isDeviated ? "text-[#D6A84F]" : "text-[#7A9E7E]"}>
+        {gazeState.isDeviated ? "Off-Screen" : "Centered"}
+      </span>
+    </div>
+  );
+};

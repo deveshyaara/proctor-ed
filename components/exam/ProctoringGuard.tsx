@@ -145,6 +145,15 @@ export function ProctoringGuard({
     document.addEventListener("mozfullscreenchange", handleFullscreenChange);
     document.addEventListener("MSFullscreenChange", handleFullscreenChange);
 
+    // Initial check: if loaded directly or refreshed, prompt immediately
+    if (!isFullscreenActive()) {
+      setCurrentViolation({
+        type: "Fullscreen Required",
+        message:
+          "This examination must be completed in fullscreen mode. Please enter fullscreen to continue.",
+      });
+    }
+
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);

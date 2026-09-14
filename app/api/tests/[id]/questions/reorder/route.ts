@@ -13,7 +13,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const test = await prisma.test.findFirst({
       where: { id, teacherId: session.user.id },
-      include: { _count: { select: { attempts: true } } },
+      include: {
+        _count: {
+          select: {
+            attempts: { where: { status: { in: ["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED"] } } },
+          },
+        },
+      },
     });
     if (!test) return NextResponse.json(errorResponse("TEST_NOT_FOUND", "Test not found."), { status: 404 });
     if ((test.status === "PUBLISHED" && test._count.attempts > 0) ||
