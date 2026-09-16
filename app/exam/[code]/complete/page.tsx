@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/db/client";
 import { normalizeTestCode } from "@/lib/engines/testCode";
 import { ATTEMPT_TOKEN_COOKIE, hashToken } from "@/lib/exam/attemptAuth";
+import { getStudentAnswerSheet, type StudentAnswerSheetResult } from "@/lib/exam/studentAnswers";
+import { StudentAnswerBreakdown } from "@/components/exam/StudentAnswerBreakdown";
 import { Button } from "@/components/ui/Button";
 
 export default async function ExamCompletePage({
@@ -26,33 +28,52 @@ export default async function ExamCompletePage({
   const allCookies = cookieStore.getAll();
   const attemptCookie = allCookies.find((c) => c.name.startsWith(ATTEMPT_TOKEN_COOKIE));
 
+  const settings = (test?.settings as Record<string, unknown>) || {};
+  const showResult = Boolean(settings.showResultImmediately ?? true);
+  const showCorrectAnswers = Boolean(settings.showCorrectAnswers ?? false);
+
   let attemptScore: number | null = null;
   let maxScore: number | null = null;
   let studentName: string | null = null;
+  let answerSheet: StudentAnswerSheetResult | null = null;
 
   if (attemptCookie && test) {
     const tokenHash = hashToken(attemptCookie.value);
     const attempt = await prisma.attempt.findFirst({
       where: { testId: test.id, accessTokenHash: tokenHash },
-      select: { score: true, maxScore: true, studentName: true },
+      select: { id: true, score: true, maxScore: true, studentName: true },
     });
     if (attempt) {
       attemptScore = attempt.score;
       maxScore = attempt.maxScore;
       studentName = attempt.studentName;
+
+      if (showResult && showCorrectAnswers) {
+        try {
+          answerSheet = await getStudentAnswerSheet(attempt.id, attemptCookie.value);
+        } catch (e) {
+          console.error("Failed to load student answer breakdown:", e);
+        }
+      }
     }
   }
 
-  const settings = (test?.settings as Record<string, unknown>) || {};
-  const showResult = Boolean(settings.showResultImmediately);
   const percentage =
     attemptScore !== null && maxScore
       ? Math.round((attemptScore / maxScore) * 100)
       : null;
 
+  const hasAnswerBreakdown = Boolean(
+    answerSheet?.questions && answerSheet.questions.length > 0
+  );
+
   return (
-    <div className="min-h-screen bg-[#11110F] flex items-center justify-center p-4 sm:p-6">
-      <div className="bg-[#191916] border border-[rgba(244,240,231,0.08)] rounded-[20px] p-6 sm:p-10 max-w-lg w-full text-center space-y-6 shadow-xl">
+    <div className="min-h-screen bg-[#11110F] flex items-center justify-center p-4 sm:p-6 my-auto">
+      <div
+        className={`bg-[#191916] border border-[rgba(244,240,231,0.08)] rounded-[20px] p-6 sm:p-10 w-full text-center space-y-6 shadow-xl my-8 transition-all ${
+          hasAnswerBreakdown ? "max-w-3xl" : "max-w-lg"
+        }`}
+      >
         {/* Success Icon */}
         <div className="w-16 h-16 rounded-full bg-[#7A9E7E]/15 text-[#7A9E7E] flex items-center justify-center text-3xl mx-auto border border-[#7A9E7E]/30">
           ✓
@@ -111,6 +132,11 @@ export default async function ExamCompletePage({
           </div>
         )}
 
+        {/* Per-Question Answer & Explanation Breakdown (when showResultImmediately && showCorrectAnswers) */}
+        {hasAnswerBreakdown && answerSheet && (
+          <StudentAnswerBreakdown sheet={answerSheet} />
+        )}
+
         {/* Closing Notice */}
         <p className="text-[12px] text-[#AAA69B]">
           All exam data, integrity checks, and answers have been securely synced. You may safely close this browser window.
@@ -128,3 +154,4 @@ export default async function ExamCompletePage({
     </div>
   );
 }
+
