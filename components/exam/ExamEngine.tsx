@@ -358,8 +358,8 @@ export function ExamEngine({
           </div>
         </div>
 
-        {/* Right Rail: Desktop Question Navigator + Persistent Camera (4 cols) */}
-        <div className="hidden lg:block lg:col-span-4 sticky top-24 space-y-4">
+        {/* Right Rail: Camera always mounted; Question Navigator desktop-only (mobile uses drawer) */}
+        <div className="lg:col-span-4 sticky top-24 space-y-4">
           {/* Persistent Camera Feed Widget */}
           <ProctoringCameraFeed
             enabled={settings.cameraRequired}
@@ -397,7 +397,8 @@ export function ExamEngine({
             }, [reportEvent])}
           />
 
-          <div className="bg-[#191916] border border-[rgba(244,240,231,0.08)] rounded-[16px] p-5 space-y-4">
+          {/* Question Navigator — desktop only; mobile uses the drawer triggered by the nav button */}
+          <div className="hidden lg:block bg-[#191916] border border-[rgba(244,240,231,0.08)] rounded-[16px] p-5 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[rgba(244,240,231,0.06)]">
               <span className="text-[14px] font-semibold text-[#F4F0E7]">
                 Question Navigator

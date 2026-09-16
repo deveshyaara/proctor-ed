@@ -61,47 +61,58 @@ export async function POST(req: NextRequest, { params }: Params) {
     const settings = test?.settings as { warningLimit?: number } | null;
     const warningLimit = settings?.warningLimit ?? 3;
 
-      // Use atomic transaction to prevent race condition on warning increments
-      const result = await prisma.$transaction(async (tx) => {
-        const event = await tx.proctoringEvent.create({
-          data: {
-            attemptId: id,
-            eventType,
-            severity: authoritativeSeverity,
-            description,
-            confidence,
-            metadata,
-            timestamp: serverTimestamp,
-          },
-        });
-
-        let warningCount = attempt.warningCount;
-        let autoTerminated = false;
-        let terminalScore: number | null = null;
-        let terminalMaxScore: number | null = null;
-
-        // Increment warning count for HIGH severity events (atomic)
-        if (authoritativeSeverity === "HIGH") {
-          const updated = await tx.attempt.update({
-            where: { id },
-            data: { warningCount: { increment: 1 } },
-            select: { warningCount: true },
-          });
-          warningCount = updated.warningCount;
-
-          // Check limit and auto-submit if reached (all in transaction)
-          if (warningCount >= warningLimit) {
-            const submission = await executeAttemptSubmission(id, "AUTO_SUBMITTED");
-            autoTerminated = true;
-            terminalScore = submission.score;
-            terminalMaxScore = submission.maxScore;
-          }
-        }
-
-        return { event, warningCount, autoTerminated, terminalScore, terminalMaxScore };
+    // Atomic transaction: record proctoring event + increment warning count.
+    // executeAttemptSubmission is intentionally called OUTSIDE this transaction
+    // to prevent nested interactive transactions, which compound pooler-incompatibility.
+    // executeAttemptSubmission has its own atomic status claim and is idempotent.
+    const txResult = await prisma.$transaction(async (tx) => {
+      const event = await tx.proctoringEvent.create({
+        data: {
+          attemptId: id,
+          eventType,
+          severity: authoritativeSeverity,
+          description,
+          confidence,
+          metadata,
+          timestamp: serverTimestamp,
+        },
       });
 
-      const { event, warningCount, autoTerminated, terminalScore, terminalMaxScore } = result;
+      let warningCount = attempt.warningCount;
+
+      // Increment warning count for HIGH severity events (atomic)
+      if (authoritativeSeverity === "HIGH") {
+        const updated = await tx.attempt.update({
+          where: { id },
+          data: { warningCount: { increment: 1 } },
+          select: { warningCount: true },
+        });
+        warningCount = updated.warningCount;
+      }
+
+      return { event, warningCount };
+    });
+
+    const { event, warningCount } = txResult;
+
+    // Auto-submit if the warning threshold is reached or exceeded.
+    // Deliberately checks warningCount >= warningLimit WITHOUT gating on HIGH
+    // severity: this ensures any subsequent event (LOW or HIGH) also retries
+    // auto-submission if the attempt is still IN_PROGRESS and already over the
+    // threshold — guarding against the case where a previous submission call
+    // failed after the warning-count transaction had already committed.
+    // executeAttemptSubmission handles the already-submitted case idempotently.
+    let autoTerminated = false;
+    let terminalScore: number | null = null;
+    let terminalMaxScore: number | null = null;
+
+    if (warningCount >= warningLimit) {
+      const submission = await executeAttemptSubmission(id, "AUTO_SUBMITTED");
+      autoTerminated = !submission.alreadySubmitted;
+      terminalScore = submission.score;
+      terminalMaxScore = submission.maxScore;
+    }
+
 
     return NextResponse.json({
       logged: true,
