@@ -117,12 +117,31 @@ async function startStdio(): Promise<void> {
 
 async function startHttp(port: number): Promise<void> {
   // Streamable HTTP transport — requires @modelcontextprotocol/sdk ≥ 1.9
+  // Uses STATELESS mode: one transport instance, connected once, handles all requests.
   try {
     const { StreamableHTTPServerTransport } = await import("@modelcontextprotocol/sdk/server/streamableHttp.js");
     const { createServer } = await import("node:http");
     const cfg = getConfig();
 
+    // Stateless: sessionIdGenerator = undefined → no session validation, works for remote Claude connectors
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await server.connect(transport);
+
     const httpServer = createServer(async (req, res) => {
+      // Health check endpoint — required by Render to confirm the service is up
+      if (req.url === "/health" || req.url === "/") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "ok", server: "proctor-ed-mcp", version: "1.0.0" }));
+        return;
+      }
+
+      // Only handle /mcp path
+      if (req.url !== "/mcp") {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Not found" }));
+        return;
+      }
+
       // Bearer auth guard for HTTP transport
       if (cfg.mcp.authSecret) {
         const auth = req.headers["authorization"] ?? "";
@@ -133,13 +152,18 @@ async function startHttp(port: number): Promise<void> {
         }
       }
 
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => crypto.randomUUID() });
-      await server.connect(transport);
-      await transport.handleRequest(req, res, await readBody(req));
+      // GET /mcp → SSE stream; POST /mcp → JSON-RPC request
+      if (req.method === "GET") {
+        await transport.handleRequest(req, res);
+      } else {
+        await transport.handleRequest(req, res, await readBody(req));
+      }
     });
 
     httpServer.listen(port, () => {
       logger.info(`ProctorED MCP server running on HTTP port ${port}`);
+      logger.info(`Health:  http://localhost:${port}/health`);
+      logger.info(`MCP:     http://localhost:${port}/mcp`);
     });
   } catch (err) {
     logger.error(`Failed to start HTTP transport: ${formatError(err)}. Falling back to stdio.`);

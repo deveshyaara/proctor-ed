@@ -77,7 +77,7 @@ export function getConfig(): Config {
     },
     mcp: {
       transport: transport as "stdio" | "http",
-      httpPort: intEnv("MCP_HTTP_PORT", 3001),
+      httpPort: intEnv("MCP_HTTP_PORT", intEnv("PORT", 3001)),
       authSecret: process.env["MCP_AUTH_SECRET"] ?? null,
     },
     generation: {
