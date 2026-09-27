@@ -30,11 +30,6 @@ export type Config = {
     serviceToken: string;
     timeoutMs: number;
   };
-  openai: {
-    apiKey: string;
-    model: string;
-    verifierModel: string;
-  };
   mcp: {
     transport: "stdio" | "http";
     httpPort: number;
@@ -69,11 +64,6 @@ export function getConfig(): Config {
       baseUrl: optionalEnv("PROCTOR_ED_API_URL", "http://localhost:3000").replace(/\/$/, ""),
       serviceToken: requireEnv("PROCTOR_ED_SERVICE_TOKEN"),
       timeoutMs: intEnv("API_TIMEOUT_MS", 30_000),
-    },
-    openai: {
-      apiKey: requireEnv("OPENAI_API_KEY"),
-      model: optionalEnv("OPENAI_MODEL", "gpt-4o-2024-08-06"),
-      verifierModel: optionalEnv("OPENAI_VERIFIER_MODEL", "gpt-4o-mini-2024-07-18"),
     },
     mcp: {
       transport: transport as "stdio" | "http",

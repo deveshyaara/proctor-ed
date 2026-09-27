@@ -19,7 +19,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.3",
     "dotenv": "^16.4.7",
-    "openai": "^4.68.0",
     "zod": "^3.24.0",
     "zod-to-json-schema": "^3.23.5"
   },
