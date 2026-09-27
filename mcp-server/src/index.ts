@@ -119,28 +119,38 @@ async function startHttp(port: number): Promise<void> {
   // Streamable HTTP transport — requires @modelcontextprotocol/sdk ≥ 1.9
   // Uses STATELESS mode: one transport instance, connected once, handles all requests.
   try {
-    const { StreamableHTTPServerTransport } = await import("@modelcontextprotocol/sdk/server/streamableHttp.js");
+    const { SSEServerTransport } = await import("@modelcontextprotocol/sdk/server/sse.js");
     const { createServer } = await import("node:http");
     const cfg = getConfig();
 
-    // Stateless: sessionIdGenerator = undefined → no session validation, works for remote Claude connectors
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    await server.connect(transport);
+    // Store active transport per session
+    let transport: import("@modelcontextprotocol/sdk/server/sse.js").SSEServerTransport | null = null;
 
     const httpServer = createServer(async (req, res) => {
-      // Health check endpoint — required by Render to confirm the service is up
+      // CORS Headers for Claude Web Client
+      const headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
+      };
+
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, headers);
+        res.end();
+        return;
+      }
+
+      // Add CORS to all responses
+      Object.entries(headers).forEach(([key, value]) => res.setHeader(key, value));
+
+      // Health check endpoint
       if (req.url === "/health" || req.url === "/") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok", server: "proctor-ed-mcp", version: "1.0.0" }));
         return;
       }
 
-      // Only handle /mcp path
-      if (req.url !== "/mcp") {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Not found" }));
-        return;
-      }
+      logger.info(`Received request: ${req.method} ${req.url}`);
 
       // Bearer auth guard for HTTP transport
       if (cfg.mcp.authSecret) {
@@ -152,11 +162,38 @@ async function startHttp(port: number): Promise<void> {
         }
       }
 
-      // GET /mcp → SSE stream; POST /mcp → JSON-RPC request
-      if (req.method === "GET") {
-        await transport.handleRequest(req, res);
-      } else {
-        await transport.handleRequest(req, res, await readBody(req));
+      try {
+        const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+        
+        if (url.pathname === "/mcp" && req.method === "GET") {
+          // Initialize SSE connection
+          transport = new SSEServerTransport("/mcp/message", res);
+          await server.connect(transport);
+          await transport.start();
+          return;
+        }
+        
+        if (url.pathname === "/mcp/message" && req.method === "POST") {
+          // Handle incoming messages
+          if (!transport) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Session not initialized" }));
+            return;
+          }
+          await transport.handlePostMessage(req, res, await readBody(req));
+          return;
+        }
+
+        // Unknown route
+        logger.info(`Returning 404 for ${req.url}`);
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Not found" }));
+      } catch (err) {
+        logger.error(`Error in HTTP server: ${err instanceof Error ? err.stack : err}`);
+        if (!res.headersSent) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: { message: err instanceof Error ? err.message : String(err) } }));
+        }
       }
     });
 
