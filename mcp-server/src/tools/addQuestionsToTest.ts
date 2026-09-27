@@ -1,49 +1,34 @@
-/**
- * tools/addQuestionsToTest.ts — MCP Tool: add_questions_to_test
- *
- * Generates and inserts additional questions into an existing DRAFT test.
- * Validates test ownership, editability, and question quality before insertion.
- */
-
 import { z } from "zod";
 import { ProctorEdClient } from "../client.js";
 import { McpError } from "../errors.js";
 import { audit } from "../audit.js";
-import { logger } from "../logger.js";
-import { OpenAIProvider } from "../providers/openai.js";
 import { validateQuestion } from "../orchestrator/validateExam.js";
-import { verifyAnswer } from "../orchestrator/verifyAnswers.js";
 import { deduplicateBatch } from "../orchestrator/detectDuplicates.js";
-import { toProctorEdQuestion, type GeneratedQuestion } from "../schemas.js";
-import { getConfig } from "../config.js";
-import type { GenerateBatchParams } from "../providers/openai.js";
+import { toProctorEdQuestion, GeneratedQuestionSchema, type GeneratedQuestion } from "../schemas.js";
 
 const InputSchema = z.object({
   testId: z.string().min(1),
-  topic: z.string().min(1).max(200),
-  count: z.number().int().min(1).max(50),
-  type: z.enum(["MCQ", "TRUE_FALSE", "NUMERICAL", "SHORT_ANSWER"]),
-  difficulty: z.enum(["easy", "medium", "hard", "mixed"]).optional().default("medium"),
-  marksPerQuestion: z.number().positive().max(100).optional().default(1),
-  negativeMarks: z.number().min(0).max(100).optional().default(0),
+  questions: z.array(GeneratedQuestionSchema).min(1).max(50),
 });
 
 export const addQuestionsToTestTool = {
   name: "add_questions_to_test",
-  description: "Add AI-generated questions to an existing DRAFT test. Cannot modify published or closed tests.",
+  description: "Add a complete list of fully-formed questions to an existing DRAFT test. Cannot modify published or closed tests. You must provide the questions array.",
 
   inputSchema: {
     type: "object" as const,
     properties: {
       testId: { type: "string", description: "ID of the draft test to add questions to" },
-      topic: { type: "string", description: "Topic for the new questions" },
-      count: { type: "number", description: "Number of questions to add (1-50)" },
-      type: { type: "string", enum: ["MCQ", "TRUE_FALSE", "NUMERICAL", "SHORT_ANSWER"], description: "Question type" },
-      difficulty: { type: "string", enum: ["easy", "medium", "hard", "mixed"], description: "Difficulty level (default: medium)" },
-      marksPerQuestion: { type: "number", description: "Marks per question (default: 1)" },
-      negativeMarks: { type: "number", description: "Negative marks per wrong answer (default: 0)" },
+      questions: {
+        type: "array",
+        description: "The complete list of fully-formed questions.",
+        items: {
+          type: "object",
+          description: "A question object matching the required schema. Ensure you provide type, questionText, marks, negativeMarks, difficulty, and correctAnswer / correctOptionIndex as appropriate."
+        }
+      }
     },
-    required: ["testId", "topic", "count", "type"],
+    required: ["testId", "questions"],
   },
 
   async execute(rawInput: unknown, requestId: string): Promise<unknown> {
@@ -54,10 +39,8 @@ export const addQuestionsToTestTool = {
       throw new McpError({ code: "INVALID_INPUT", message: parsed.error.errors.map((e) => e.message).join("; "), retryable: false });
     }
 
-    const { testId, topic, count, type, difficulty, marksPerQuestion, negativeMarks } = parsed.data;
+    const { testId, questions } = parsed.data;
     const client = new ProctorEdClient();
-    const cfg = getConfig();
-    const provider = new OpenAIProvider();
 
     // Verify test is editable
     const test = await client.getTest(testId);
@@ -69,7 +52,30 @@ export const addQuestionsToTestTool = {
       });
     }
 
-    // Fetch existing questions for duplicate detection
+    // Structural Validation
+    const validationIssues: Array<{ questionIndex?: number; message: string }> = [];
+    const validQuestions: GeneratedQuestion[] = [];
+    
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i]!;
+      const validation = validateQuestion(q, i);
+      if (!validation.valid) {
+        validationIssues.push(...validation.issues);
+      } else {
+        validQuestions.push(q);
+      }
+    }
+
+    if (validationIssues.length > 0) {
+       throw new McpError({
+        code: "PAPER_VALIDATION_FAILED",
+        message: "Questions failed structural validation.",
+        retryable: false,
+        details: { issues: validationIssues },
+      });
+    }
+
+    // Duplicate detection against existing questions
     const existingRaw = await client.getQuestions(testId);
     const existingQuestions: GeneratedQuestion[] = existingRaw.map((q) => ({
       type: q.type as "MCQ",
@@ -81,74 +87,37 @@ export const addQuestionsToTestTool = {
       difficulty: "medium",
     }));
 
-    const params: GenerateBatchParams = {
-      subject: test.subject,
-      topic,
-      className: test.className,
-      questionType: type,
-      difficulty: difficulty === "mixed" ? "mixed" : difficulty,
-      count: Math.min(cfg.generation.batchSize, count),
-      marksPerQuestion,
-      negativeMarks,
-      requestId,
-    };
+    const { accepted: deduped, duplicateCount } = deduplicateBatch(validQuestions, existingQuestions);
 
-    const accepted: GeneratedQuestion[] = [];
-    const pool = [...existingQuestions];
-    let attempts = 0;
-    const maxAttempts = cfg.generation.maxRetriesPerQuestion * count;
-
-    while (accepted.length < count && attempts < maxAttempts) {
-      const needed = Math.min(cfg.generation.batchSize, count - accepted.length);
-      params.count = needed;
-
-      let batch: GeneratedQuestion[];
-      try {
-        batch = await provider.generateBatch(params);
-      } catch {
-        attempts++;
-        continue;
-      }
-
-      for (const rawQ of batch) {
-        if (accepted.length >= count) break;
-
-        const validation = validateQuestion(rawQ);
-        if (!validation.valid) { attempts++; continue; }
-
-        const verify = await verifyAnswer(rawQ, { subject: test.subject, topic, requestId }, provider);
-        if (!verify.valid || verify.confidence < 0.6) { attempts++; continue; }
-
-        const { accepted: deduped, duplicateCount } = deduplicateBatch([rawQ], pool);
-        if (duplicateCount > 0) { attempts++; continue; }
-
-        accepted.push(deduped[0]!);
-        pool.push(deduped[0]!);
-      }
-
-      attempts++;
-    }
-
-    if (accepted.length < count) {
+    if (deduped.length === 0) {
       throw new McpError({
-        code: "GENERATION_FAILED",
-        message: `Could only generate ${accepted.length}/${count} valid unique questions for topic "${topic}".`,
+        code: "PAPER_VALIDATION_FAILED",
+        message: "All provided questions were detected as duplicates.",
         retryable: false,
       });
     }
 
-    const payloads = accepted.map(toProctorEdQuestion);
-    for (const payload of payloads) {
-      await client.createQuestion(testId, payload);
+    const payloads = deduped.map(toProctorEdQuestion);
+    try {
+      await client.bulkCreateQuestions(testId, payloads);
+    } catch (bulkErr) {
+      if ((bulkErr as McpError).code === "UPSTREAM_ERROR") {
+        for (const payload of payloads) {
+          await client.createQuestion(testId, payload);
+        }
+      } else {
+        throw bulkErr;
+      }
     }
 
-    audit({ requestId, toolName: "add_questions_to_test", action: "QUESTIONS_INSERTED", timestamp: new Date().toISOString(), testId, generatedQuestionCount: accepted.length });
+    audit({ requestId, toolName: "add_questions_to_test", action: "QUESTIONS_INSERTED", timestamp: new Date().toISOString(), testId, generatedQuestionCount: deduped.length });
 
     return {
       success: true,
       testId,
-      addedCount: accepted.length,
-      message: `Added ${accepted.length} ${type} questions to "${test.title}".`,
+      addedCount: deduped.length,
+      duplicatesRemoved: duplicateCount,
+      message: `Added ${deduped.length} questions to "${test.title}".`,
     };
   },
 };

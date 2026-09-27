@@ -24,7 +24,7 @@ import { getConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { McpError, formatError } from "./errors.js";
 
-import { generateExamPaperTool } from "./tools/generateExamPaper.js";
+import { createExamPaperTool } from "./tools/createExamPaper.js";
 import { validateExamPaperTool } from "./tools/validateExamPaper.js";
 import { addQuestionsToTestTool } from "./tools/addQuestionsToTest.js";
 import { previewPaperTool } from "./tools/previewPaper.js";
@@ -34,7 +34,7 @@ import { listTestsTool } from "./tools/listTests.js";
 // ── Tool registry ─────────────────────────────────────────────────────────────
 
 const TOOLS = [
-  generateExamPaperTool,
+  createExamPaperTool,
   validateExamPaperTool,
   addQuestionsToTestTool,
   previewPaperTool,

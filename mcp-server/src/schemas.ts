@@ -129,46 +129,18 @@ export function toProctorEdQuestion(q: GeneratedQuestion): {
 
 // ── Generation input schema ───────────────────────────────────────────────────
 
-export const GenerateExamInputSchema = z.object({
+export const CreateExamInputSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
   subject: z.string().min(1).max(100),
-  topic: z.string().min(1).max(200),
   className: z.string().min(1).max(50),
-
-  board: z.string().max(50).optional(),
-  curriculum: z.string().max(100).optional(),
-  academicYear: z.string().max(20).optional(),
-  chapter: z.string().max(200).optional(),
-  learningObjectives: z.array(z.string().max(300)).max(10).optional(),
-
-  questionCount: z.number().int().min(1).max(100),
-  questionTypes: z.array(z.enum(["MCQ", "TRUE_FALSE", "NUMERICAL", "SHORT_ANSWER"])).min(1),
-
-  questionDistribution: z.object({
-    MCQ: z.number().int().min(0).optional(),
-    TRUE_FALSE: z.number().int().min(0).optional(),
-    NUMERICAL: z.number().int().min(0).optional(),
-    SHORT_ANSWER: z.number().int().min(0).optional(),
-  }).optional(),
-
+  description: z.string().max(1000).optional(),
   durationMinutes: z.number().int().min(5).max(180),
-
-  difficultyLevel: z.enum(["easy", "medium", "hard", "mixed"]),
-
-  difficultyDistribution: z.object({
-    easy: z.number().int().min(0).optional(),
-    medium: z.number().int().min(0).optional(),
-    hard: z.number().int().min(0).optional(),
-  }).optional(),
-
-  marksPerQuestion: z.number().positive().max(100).optional(),
-  negativeMarking: z.boolean().optional(),
-  negativeMarks: z.number().min(0).max(100).optional(),
-  language: z.string().max(30).optional(),
-
-  idempotencyKey: z.string().max(128).optional(),
+  questions: z.array(GeneratedQuestionSchema).min(1).max(100),
 });
 
-export type GenerateExamInput = z.infer<typeof GenerateExamInputSchema>;
+export type CreateExamInput = z.infer<typeof CreateExamInputSchema>;
+
+
 
 // ── Paper validation result ───────────────────────────────────────────────────
 
@@ -190,10 +162,3 @@ export interface PaperValidationResult {
   warnings: ValidationIssue[];
 }
 
-// ── Answer verification result ────────────────────────────────────────────────
-
-export interface VerificationResult {
-  valid: boolean;
-  confidence: number;
-  issue?: string;
-}
