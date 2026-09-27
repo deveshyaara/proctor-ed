@@ -160,10 +160,10 @@ async function startHttp(port: number): Promise<void> {
       }
     });
 
-    httpServer.listen(port, () => {
-      logger.info(`ProctorED MCP server running on HTTP port ${port}`);
-      logger.info(`Health:  http://localhost:${port}/health`);
-      logger.info(`MCP:     http://localhost:${port}/mcp`);
+    httpServer.listen(port, "0.0.0.0", () => {
+      logger.info(`ProctorED MCP server running on 0.0.0.0:${port}`);
+      logger.info(`Health:  http://0.0.0.0:${port}/health`);
+      logger.info(`MCP:     http://0.0.0.0:${port}/mcp`);
     });
   } catch (err) {
     logger.error(`Failed to start HTTP transport: ${formatError(err)}. Falling back to stdio.`);
