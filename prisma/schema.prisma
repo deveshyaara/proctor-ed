@@ -79,6 +79,7 @@ model User {
   updatedAt      DateTime @updatedAt
 
   tests Test[]
+  apiTokens ApiToken[]
 
   @@index([email])
   @@index([neonAuthUserId])
@@ -240,5 +241,25 @@ model AuditLog {
   @@index([actorId])
   @@index([entityId])
   @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────
+// API TOKEN (For MCP / AI Agents)
+// ─────────────────────────────────────────
+
+model ApiToken {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String    // e.g. "Claude Desktop", "Cursor"
+  tokenHash   String    @unique
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("api_tokens")
 }
 

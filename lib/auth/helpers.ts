@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth/server";
 import { prisma } from "@/lib/db/client";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import crypto from "crypto";
 import { ApiError } from "@/lib/exam/attemptAuth";
 import type { User as ProctorUser } from "@prisma/client";
 
@@ -118,6 +120,41 @@ export const requireTeacher = requireTeacherSession;
  * NEVER calls redirect() so JSON APIs return proper HTTP status codes.
  */
 export async function requireTeacherApi(): Promise<AuthenticatedTeacherSession> {
+  // Check for MCP API token in Authorization header first
+  const reqHeaders = await headers();
+  const authHeader = reqHeaders.get("authorization");
+  
+  if (authHeader?.startsWith("Bearer ")) {
+    const rawToken = authHeader.slice(7).trim();
+    if (rawToken) {
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      
+      const apiToken = await prisma.apiToken.findUnique({
+        where: { tokenHash },
+        include: { user: true }
+      });
+      
+      if (apiToken && (apiToken.user.role === "TEACHER" || apiToken.user.role === "ADMIN")) {
+        // Update lastUsedAt asynchronously
+        prisma.apiToken.update({ where: { id: apiToken.id }, data: { lastUsedAt: new Date() } }).catch(console.error);
+        
+        return {
+          user: {
+            id: apiToken.user.id,
+            neonAuthUserId: apiToken.user.neonAuthUserId,
+            email: apiToken.user.email,
+            name: apiToken.user.name,
+            role: apiToken.user.role,
+          },
+          session: null, // API token does not have an interactive session
+        };
+      } else {
+        throw new ApiError(401, "UNAUTHORIZED", "Invalid or unauthorized API token.");
+      }
+    }
+  }
+
+  // Fallback to existing session auth
   const { data: session } = await auth.getSession();
   if (!session?.user?.id) {
     throw new ApiError(401, "UNAUTHORIZED", "Authentication required.");

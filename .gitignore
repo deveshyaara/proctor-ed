@@ -1,5 +1,5 @@
 # Dependencies
-/node_modules
+node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -18,8 +18,13 @@
 # Next.js build & output
 /.next/
 /out/
-/build
-/dist
+build
+dist
+
+# MCP Server
+mcp-server/node_modules
+mcp-server/dist
+mcp-server/.env
 
 # Local storage, scratch & artifacts
 /storage
