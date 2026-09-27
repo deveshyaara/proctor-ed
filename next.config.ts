@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
   // Next.js 16 hydration requires nonce-based CSP; camera access requires
   // careful Permissions-Policy. Planned for post-staging hardening.
   async headers() {
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+
     return [
       {
         source: "/(.*)",
@@ -63,6 +65,31 @@ const nextConfig: NextConfig = {
               "payment=()",
               "usb=()",
             ].join(", "),
+          },
+        ],
+      },
+      // CORS — restrict API routes to requests originating from the app's own domain.
+      // sameSite:strict on cookies already blocks most cross-origin attacks, but
+      // explicit CORS headers make the security posture unambiguous and prevent
+      // any future misconfiguration from silently widening access.
+      {
+        source: "/api/(.*)",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: appUrl,
+          },
+          {
+            key: "Access-Control-Allow-Methods",
+            value: "GET, POST, PATCH, DELETE, OPTIONS",
+          },
+          {
+            key: "Access-Control-Allow-Headers",
+            value: "Content-Type, Authorization",
+          },
+          {
+            key: "Access-Control-Allow-Credentials",
+            value: "true",
           },
         ],
       },

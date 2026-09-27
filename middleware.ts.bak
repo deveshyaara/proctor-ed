@@ -1,0 +1,67 @@
+import { NextRequest, NextResponse } from "next/server";
+
+/**
+ * Route-level auth guard middleware — defense-in-depth safety net.
+ *
+ * Purpose: catch API routes that accidentally omit requireTeacherApi() before
+ * reaching the handler, so unauthenticated requests never make DB calls.
+ *
+ * This does NOT replace handler-level auth checks. requireTeacherApi() inside
+ * each handler performs full token validation, role checks, and account lookup.
+ * This middleware performs only a fast cookie-presence check at the edge.
+ *
+ * Route classification:
+ *  - /api/tests/*      → teacher-only; requires session cookie
+ *  - /api/health/*     → teacher-only; requires session cookie
+ *  - /api/student/*    → student cookie-based auth handled inside each handler
+ *  - /api/auth/*       → public (login/signup flows)
+ */
+
+const TEACHER_API_PREFIXES = ["/api/tests", "/api/health"];
+
+/**
+ * Neon Auth sets a session cookie whose name may vary by SDK version.
+ * List all candidate names so a future SDK upgrade doesn't silently break the check.
+ * Update this list if you inspect Set-Cookie headers after a login and find a different name.
+ */
+const SESSION_COOKIE_CANDIDATES = [
+  "neon-auth-session",
+  "__neon_session",
+  "better-auth.session_token",
+  "__session",
+];
+
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  const isTeacherApi = TEACHER_API_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
+
+  if (!isTeacherApi) {
+    return NextResponse.next();
+  }
+
+  // Fast presence check: verify at least one known session cookie exists.
+  // Full token validation (signature, expiry, role) is performed inside the handler.
+  const hasSessionCookie = SESSION_COOKIE_CANDIDATES.some((name) =>
+    req.cookies.has(name)
+  );
+
+  // Also accept a Bearer token for programmatic / server-to-server calls
+  const hasAuthHeader = req.headers.get("authorization")?.startsWith("Bearer ") ?? false;
+
+  if (!hasSessionCookie && !hasAuthHeader) {
+    return NextResponse.json(
+      { error: { code: "UNAUTHORIZED", message: "Authentication required." } },
+      { status: 401 }
+    );
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  // Only run on API routes — skip pages, static files, and _next internals
+  matcher: ["/api/:path*"],
+};

@@ -9,6 +9,7 @@ import {
 import { isTerminal } from "@/lib/exam/stateMachine";
 import { toStudentQuestions, StudentQuestion } from "@/lib/exam/questions";
 import { ExamEngine } from "@/components/exam/ExamEngine";
+import { executeAttemptSubmission } from "@/lib/exam/submission";
 
 export default async function ExamAttemptPage({
   params,
@@ -48,6 +49,7 @@ export default async function ExamAttemptPage({
 
   // Check expiry
   if (isAttemptExpired(attempt)) {
+    await executeAttemptSubmission(attempt.id, "EXPIRED");
     redirect(`/exam/${code}/complete?auto=true`);
   }
 

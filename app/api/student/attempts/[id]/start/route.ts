@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { requireAttemptOwnership, attemptCookieName, errorResponse, isAttemptExpired } from "@/lib/exam/attemptAuth";
-import { assertLegalTransition } from "@/lib/exam/stateMachine";
+import { isTerminal } from "@/lib/exam/stateMachine";
 import { toStudentQuestions, shuffleQuestionIds, shuffleOptionMap } from "@/lib/exam/questions";
 
 type Params = { params: Promise<{ id: string }> };
@@ -78,10 +78,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + test.durationSeconds * 1000);
 
-    assertLegalTransition(attempt.status, "IN_PROGRESS");
-
-    await prisma.attempt.update({
-      where: { id },
+    // Atomic conditional update: only the first concurrent /start call will
+    // match WHERE status = 'CREATED' and get count === 1. Any subsequent
+    // concurrent call gets count === 0 and falls through to the idempotency
+    // return below — eliminating the race that could produce conflicting expiresAt.
+    const startResult = await prisma.attempt.updateMany({
+      where: { id, status: "CREATED" }, // guard: only transition from CREATED
       data: {
         status: "IN_PROGRESS",
         startedAt: now,
@@ -91,6 +93,26 @@ export async function POST(req: NextRequest, { params }: Params) {
         lastHeartbeatAt: now,
       },
     });
+
+    // count === 0 means another concurrent request already started the attempt.
+    // Re-fetch and return the canonical state set by the winner.
+    if (startResult.count === 0) {
+      const current = await prisma.attempt.findUnique({ where: { id } });
+      if (!current || isTerminal(current.status)) {
+        return NextResponse.json(
+          errorResponse("INVALID_TRANSITION", "This attempt is not in a startable state."),
+          { status: 409 }
+        );
+      }
+      const existingQuestionOrder = (current.questionOrder as string[]) || questionIds;
+      const existingOptionOrderMap = (current.optionOrderMap as Record<string, number[]>) || {};
+      const studentQuestions = toStudentQuestions(test.questions, existingQuestionOrder, existingOptionOrderMap);
+      return NextResponse.json({
+        questions: studentQuestions,
+        expiresAt: current.expiresAt!.toISOString(),
+        startedAt: current.startedAt!.toISOString(),
+      });
+    }
 
     // Server-side integrity check: log if student started without client fullscreen verification
     if (settings.fullscreenRequired !== false && !fullscreenConfirmed) {

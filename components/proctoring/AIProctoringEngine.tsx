@@ -10,11 +10,12 @@ import { GazeEstimate } from "@/lib/ai/vision/headPose";
 interface AIProctoringEngineProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isStreamStable: boolean;
-  onAIEvent: (type: EvidenceType, confidence: number, durationMs: number, faceCount: number) => void;
+  gazeDetectionEnabled?: boolean;
+  onAIEvent: (type: EvidenceType, confidence: number, durationMs: number, faceCount: number, extraMeta?: Record<string, unknown>) => void;
   onGazeUpdate?: (gaze: GazeEstimate | null) => void;
 }
 
-export function AIProctoringEngine({ videoRef, isStreamStable, onAIEvent, onGazeUpdate }: AIProctoringEngineProps) {
+export function AIProctoringEngine({ videoRef, isStreamStable, gazeDetectionEnabled = true, onAIEvent, onGazeUpdate }: AIProctoringEngineProps) {
   const [isInitializing, setIsInitializing] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
 
@@ -43,6 +44,7 @@ export function AIProctoringEngine({ videoRef, isStreamStable, onAIEvent, onGaze
     const smootherConfig = [
       { type: 'PERSON_MISSING' as EvidenceType, minConfidence: AI_CONFIG.FACE_PRESENCE.MIN_CONFIDENCE, sustainedMs: AI_CONFIG.FACE_PRESENCE.SUSTAINED_MS, recoveryMs: AI_CONFIG.FACE_PRESENCE.RECOVERY_MS },
       { type: 'MULTIPLE_PEOPLE' as EvidenceType, minConfidence: AI_CONFIG.MULTIPLE_FACES.MIN_CONFIDENCE, sustainedMs: AI_CONFIG.MULTIPLE_FACES.SUSTAINED_MS, recoveryMs: AI_CONFIG.MULTIPLE_FACES.RECOVERY_MS },
+      { type: 'CAMERA_CONDITION_WARNING' as EvidenceType, minConfidence: 1.0, sustainedMs: 2000, recoveryMs: 1000 },
     ];
     if (AI_CONFIG.GAZE_DETECTION_ENABLED) {
       smootherConfig.push({ type: 'PROLONGED_GAZE_DEVIATION' as EvidenceType, minConfidence: AI_CONFIG.GAZE_DEVIATION.MIN_CONFIDENCE, sustainedMs: AI_CONFIG.GAZE_DEVIATION.SUSTAINED_MS, recoveryMs: AI_CONFIG.GAZE_DEVIATION.RECOVERY_MS });
@@ -123,21 +125,25 @@ export function AIProctoringEngine({ videoRef, isStreamStable, onAIEvent, onGaze
           const numFaces = result.faces.length;
           
           // CONDITION 4 & Gaze Signal:
-          // Gaze is evaluated only if GAZE_DETECTION_ENABLED and exactly 1 face was present
+          // Gaze is evaluated only if gazeDetectionEnabled and exactly 1 face was present
           const isGazeDeviated = Boolean(
-            AI_CONFIG.GAZE_DETECTION_ENABLED &&
+            gazeDetectionEnabled &&
             numFaces === 1 &&
             result.gaze?.isDeviated
           );
           const gazeConfidence = (numFaces === 1 && result.gaze?.confidence) || 0;
 
-          const rawSignals: Record<EvidenceType, { detected: boolean; confidence: number }> = {
-            PERSON_MISSING: { detected: numFaces === 0, confidence: 1.0 },
-            MULTIPLE_PEOPLE: { detected: numFaces > 1, confidence: 1.0 },
+          const rawSignals: Record<EvidenceType, { detected: boolean; confidence: number; value?: number }> = {
+            PERSON_MISSING: { detected: numFaces === 0 && !result.error, confidence: 1.0 },
+            MULTIPLE_PEOPLE: { detected: numFaces > 1 && !result.error, confidence: 1.0, value: numFaces },
             PROLONGED_GAZE_DEVIATION: {
-              detected: isGazeDeviated,
+              detected: isGazeDeviated && !result.error,
               confidence: gazeConfidence,
             },
+            CAMERA_CONDITION_WARNING: {
+              detected: Boolean(result.error),
+              confidence: 1.0,
+            }
           };
 
           if (typeof window !== 'undefined') {
@@ -153,7 +159,14 @@ export function AIProctoringEngine({ videoRef, isStreamStable, onAIEvent, onGaze
             const lastFired = lastEventFiredAtRef.current.get(ev.type) || 0;
             if (Date.now() - lastFired >= AI_CONFIG.EVENT_COOLDOWN_MS) {
               lastEventFiredAtRef.current.set(ev.type, Date.now());
-              onAIEventRef.current(ev.type, ev.confidence, ev.durationMs, numFaces);
+              const extraMeta: Record<string, unknown> = {};
+              if (ev.type === 'PROLONGED_GAZE_DEVIATION' && result.gaze) {
+                extraMeta.yawDeg = result.gaze.yawDeg;
+                extraMeta.pitchDeg = result.gaze.pitchDeg;
+                extraMeta.rollDeg = result.gaze.rollDeg;
+              }
+              const reportFaceCount = ev.type === 'MULTIPLE_PEOPLE' && ev.maxValue !== undefined ? ev.maxValue : numFaces;
+              onAIEventRef.current(ev.type, ev.confidence, ev.durationMs, reportFaceCount, extraMeta);
             }
           });
         }

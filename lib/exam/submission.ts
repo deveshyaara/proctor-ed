@@ -27,7 +27,7 @@ export interface SubmissionResult {
  */
 export async function executeAttemptSubmission(
   attemptId: string,
-  targetStatus: "SUBMITTED" | "AUTO_SUBMITTED" | "TERMINATED" = "SUBMITTED"
+  targetStatus: "SUBMITTED" | "AUTO_SUBMITTED" | "TERMINATED" | "EXPIRED" = "SUBMITTED"
 ): Promise<SubmissionResult> {
   const attempt = await prisma.attempt.findUnique({
     where: { id: attemptId },
@@ -139,15 +139,43 @@ export async function executeAttemptSubmission(
   // ── POST-TRANSACTION: write answer scoring results in parallel ────────────
   // Runs after the transaction commits — the attempt is already SUBMITTED.
   // Idempotent: SET to the same computed value on any retry. Running via
-  // Promise.all collapses N serial round-trips into 1 concurrent batch.
-  await Promise.all(
-    claimed.answers.map((ar) =>
-      prisma.answer.updateMany({
-        where: { attemptId, questionId: ar.questionId },
-        data: { isCorrect: ar.isCorrect, marksAwarded: ar.marksAwarded },
-      })
-    )
-  );
+  // Promise.allSettled with retry collapses N serial round-trips into 1
+  // concurrent batch and recovers from transient DB hiccups without affecting
+  // the already-committed attempt score.
+  const writeAnswerScores = async (retries = 2): Promise<void> => {
+    const results = await Promise.allSettled(
+      claimed.answers.map((ar) =>
+        prisma.answer.updateMany({
+          where: { attemptId, questionId: ar.questionId },
+          data: { isCorrect: ar.isCorrect, marksAwarded: ar.marksAwarded },
+        })
+      )
+    );
+
+    const failed = results.filter((r) => r.status === "rejected");
+    if (failed.length > 0 && retries > 0) {
+      // Brief pause before retry to let transient DB issues recover
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return writeAnswerScores(retries - 1);
+    }
+
+    if (failed.length > 0) {
+      // Log persistent failures — attempt score is already committed, so this
+      // is a cosmetic inconsistency (null isCorrect on the results view) that
+      // can be resolved by a background reconciliation job.
+      console.error(
+        JSON.stringify({
+          level: "ERROR",
+          event: "ANSWER_SCORE_WRITE_FAILED",
+          attemptId,
+          failCount: failed.length,
+          timestamp: new Date().toISOString(),
+        })
+      );
+    }
+  };
+
+  await writeAnswerScores();
 
   return {
     alreadySubmitted: false,

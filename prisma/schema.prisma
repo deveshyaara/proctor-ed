@@ -16,7 +16,6 @@ datasource db {
 
 enum Role {
   TEACHER
-  ADMIN
 }
 
 enum TestStatus {
@@ -49,13 +48,11 @@ enum ProctoringEventType {
   CAMERA_RECONNECTED
   PERSON_MISSING
   MULTIPLE_PEOPLE
-  PHONE_DETECTED
-  FACE_NOT_VISIBLE
-  SUSPICIOUS_OBJECT
   COPY_PASTE_DETECTED
   PRINT_ATTEMPTED
   PROLONGED_GAZE_DEVIATION
   CAMERA_CONDITION_WARNING
+  WINDOW_BLUR
   OTHER
 }
 
@@ -65,12 +62,7 @@ enum ProctoringEventSeverity {
   HIGH
 }
 
-enum ReviewStatus {
-  UNREVIEWED
-  CONFIRMED
-  FALSE_POSITIVE
-  IGNORED
-}
+
 
 // ─────────────────────────────────────────
 // USER (Teacher / Admin)
@@ -136,7 +128,6 @@ model Question {
   type          QuestionType
   questionText  String
   imageUrl      String?      // URL to securely stored image
-  imageKey      String?      // Storage object key (internal reference)
   options       Json?        // For MCQ: string[] of option texts
   correctAnswer String       // For MCQ: option index or text; for T/F: "true"/"false"; for NUM: number string; for SHORT: string
   marks         Float        @default(1)
@@ -223,19 +214,13 @@ model ProctoringEvent {
   timestamp         DateTime                @default(now())
   description       String?
   confidence        Float?                  // AI confidence score (0-1); null for browser events
-  screenshotKey     String?                 // Private storage object key
-  screenshotUrl     String?                 // Presigned/signed URL (generated on demand, not stored long-term)
   metadata          Json?                   // Additional event-specific data
-  reviewStatus      ReviewStatus            @default(UNREVIEWED)
-  teacherNotes      String?
-  reviewedAt        DateTime?
   createdAt         DateTime                @default(now())
 
   attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@index([attemptId])
   @@index([eventType])
-  @@index([reviewStatus])
   @@map("proctoring_events")
 }
 

@@ -215,7 +215,7 @@ self.onmessage = async (e: MessageEvent) => {
     } catch (e) {
       console.error("Worker face detection failed", e);
       if (bitmap && bitmap.close) bitmap.close();
-      self.postMessage({ type: 'DETECT_DONE', id, result: { faces: [], gaze: null } });
+      self.postMessage({ type: 'DETECT_DONE', id, result: { faces: [], gaze: null, error: true } });
     }
   }
 };

@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
         where: {
           testId: test.id,
           rollNumber: normalizedRoll,
-          status: { in: ["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED"] },
+          status: { in: ["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED", "TERMINATED", "EXPIRED"] },
         },
       });
 

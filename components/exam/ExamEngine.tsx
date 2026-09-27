@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { SyncStatus } from "@/components/ui/SyncStatus";
 import { AnswerSyncManager } from "@/lib/exam/answerSync";
 import { ProctoringCameraFeed } from "./ProctoringCameraFeed";
+import { PROCTORING_MODEL } from "@/lib/config/proctoring";
 
 interface ExamEngineProps {
   attemptId: string;
@@ -45,13 +46,24 @@ export function ExamEngine({
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
-    // Check local storage buffer first
+    // Check local storage buffer first. Validate the envelope to prevent stale
+    // data from a previous attempt (different attemptId) or expired cache from
+    // bleeding into the current session.
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem(`pe_attempt_${attemptId}_answers`);
-        if (cached) return { ...initialAnswers, ...JSON.parse(cached) };
+        const raw = localStorage.getItem(`pe_attempt_${attemptId}_answers`);
+        if (raw) {
+          const envelope: { attemptId: string; savedAt: number; answers: Record<string, string> } =
+            JSON.parse(raw);
+          const isValid =
+            envelope.attemptId === attemptId &&
+            Date.now() - envelope.savedAt < 24 * 60 * 60 * 1000; // 24h TTL
+          if (isValid) return { ...initialAnswers, ...envelope.answers };
+          // Stale or mismatched — purge to avoid contaminating this session
+          localStorage.removeItem(`pe_attempt_${attemptId}_answers`);
+        }
       } catch {
-        // Ignore JSON error
+        // Ignore JSON / storage errors
       }
     }
     return initialAnswers;
@@ -69,6 +81,10 @@ export function ExamEngine({
   const [showMobileNavigator, setShowMobileNavigator] = useState(false);
 
   const autoSubmitTriggeredRef = useRef(false);
+  // Synchronous single-flight lock: prevents two concurrent calls to handleFinalSubmit
+  // (e.g. timer expiry + heartbeat expiry firing in the same JS tick) from both
+  // proceeding to fetch /submit and double-pushing the router.
+  const isSubmittingRef = useRef(false);
   const syncManagerRef = useRef<AnswerSyncManager | null>(null);
   // Stable ref so effects always call the latest submit without stale closure
   const handleFinalSubmitRef = useRef<(isAuto?: boolean) => Promise<void>>(
@@ -78,13 +94,13 @@ export function ExamEngine({
   // Submit test with authoritative flush — declared early so effects below can reference it
   const handleFinalSubmit = useCallback(
     async (isAuto = false) => {
-      if (autoSubmitTriggeredRef.current && !isAuto) return;
+      // Synchronous single-flight guard — isSubmittingRef is updated synchronously
+      // so concurrent calls in the same JS tick are reliably blocked. useState setter
+      // is batched (async) and cannot provide this guarantee.
+      if (isSubmittingRef.current) return;
+      isSubmittingRef.current = true;
       if (isAuto) autoSubmitTriggeredRef.current = true;
-
-      setIsSubmitting((prev) => {
-        if (prev) return prev; // already submitting
-        return true;
-      });
+      setIsSubmitting(true);
       setSubmitError(null);
 
       // 1. Flush all pending writes and await server acknowledgement
@@ -117,6 +133,8 @@ export function ExamEngine({
 
         router.push(`/exam/${testCode}/complete?auto=${isAuto ? "true" : "false"}`);
       } catch (err: unknown) {
+        // Release the lock on error so the student can retry manually
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
         setSubmitError(err instanceof Error ? err.message : "Submission failed.");
       }
@@ -150,6 +168,42 @@ export function ExamEngine({
     [attemptId]
   );
 
+  // ── Proctoring camera event callbacks ───────────────────────────────────────
+  // Hoisted to top-level per Rules of Hooks — must NOT be defined inline in JSX.
+  const handleCameraDisconnect = useCallback(() => {
+    reportEvent("CAMERA_DISCONNECTED", "HIGH", "Camera connection lost.");
+  }, [reportEvent]);
+
+  const handleCameraReconnect = useCallback(() => {
+    reportEvent("CAMERA_RECONNECTED", "LOW", "Camera connection restored.");
+  }, [reportEvent]);
+
+  const CAMERA_AI_SEVERITY: Record<string, "LOW" | "MEDIUM" | "HIGH"> = {
+    PERSON_MISSING: "MEDIUM",
+    MULTIPLE_PEOPLE: "HIGH",
+    PROLONGED_GAZE_DEVIATION: "MEDIUM",
+    CAMERA_CONDITION_WARNING: "LOW",
+  };
+  const CAMERA_AI_DESCRIPTIONS: Record<string, string> = {
+    PERSON_MISSING: "No face detected in camera view.",
+    MULTIPLE_PEOPLE: "Multiple faces detected in camera view.",
+    PROLONGED_GAZE_DEVIATION: "Prolonged gaze deviation detected.",
+    CAMERA_CONDITION_WARNING: "Camera condition is poor (e.g., lighting or obstruction).",
+  };
+
+  const handleCameraAIEvent = useCallback(
+    (type: string, confidence: number, durationMs: number, faceCount: number, extraMeta?: Record<string, unknown>) => {
+      const severity = CAMERA_AI_SEVERITY[type] ?? "LOW";
+      reportEvent(
+        type,
+        severity,
+        CAMERA_AI_DESCRIPTIONS[type] ?? "AI detection triggered",
+        { model: PROCTORING_MODEL.name, modelVersion: PROCTORING_MODEL.version, durationMs, faceCount, confidence, ...extraMeta }
+      );
+    },
+    [reportEvent] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // Initialize Answer Sync Manager
   useEffect(() => {
     const manager = new AnswerSyncManager(attemptId, {
@@ -172,7 +226,10 @@ export function ExamEngine({
       if (remaining <= 0 && !autoSubmitTriggeredRef.current) {
         autoSubmitTriggeredRef.current = true;
         clearInterval(timer);
-        handleFinalSubmitRef.current(true);
+        const autoSubmit = (settings as any)?.autoSubmitOnExpiry ?? true;
+        if (autoSubmit) {
+          handleFinalSubmitRef.current(true);
+        }
       }
     }, 1000);
 
@@ -185,12 +242,19 @@ export function ExamEngine({
       try {
         const res = await fetch(`/api/student/attempts/${attemptId}/heartbeat`, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            metrics: typeof window !== "undefined" ? (window as any).aiMetrics : undefined
+          })
         });
         if (res.ok) {
           const data = await res.json();
           if (data.expired && !autoSubmitTriggeredRef.current) {
             autoSubmitTriggeredRef.current = true;
-            handleFinalSubmitRef.current(true);
+            const autoSubmit = (settings as any)?.autoSubmitOnExpiry ?? true;
+            if (autoSubmit) {
+              handleFinalSubmitRef.current(true);
+            }
           }
         }
       } catch {
@@ -222,9 +286,13 @@ export function ExamEngine({
     const newAnswers = { ...answers, [currentQ.id]: value };
     setAnswers(newAnswers);
 
-    // Persist immediately in localStorage
+    // Persist immediately in localStorage as a self-describing envelope.
+    // Includes attemptId + savedAt so stale data from other attempts is detectable.
     try {
-      localStorage.setItem(`pe_attempt_${attemptId}_answers`, JSON.stringify(newAnswers));
+      localStorage.setItem(
+        `pe_attempt_${attemptId}_answers`,
+        JSON.stringify({ attemptId, savedAt: Date.now(), answers: newAnswers })
+      );
     } catch {
       // Storage error
     }
@@ -363,38 +431,9 @@ export function ExamEngine({
           {/* Persistent Camera Feed Widget */}
           <ProctoringCameraFeed
             enabled={settings.cameraRequired}
-            onDisconnect={useCallback(() => {
-              reportEvent("CAMERA_DISCONNECTED", "HIGH", "Camera connection lost.");
-            }, [reportEvent])}
-            onReconnect={useCallback(() => {
-              reportEvent("CAMERA_RECONNECTED", "LOW", "Camera connection restored.");
-            }, [reportEvent])}
-            onAIEvent={useCallback((type: string, confidence: number, durationMs: number, faceCount: number) => {
-              // Ensure type matches the Enum values
-              const severityMap: Record<string, "LOW" | "MEDIUM" | "HIGH"> = {
-                PERSON_MISSING: "MEDIUM",
-                MULTIPLE_PEOPLE: "HIGH",
-                PROLONGED_GAZE_DEVIATION: "MEDIUM",
-                CAMERA_CONDITION_WARNING: "LOW"
-              };
-              const severity = severityMap[type] || "LOW";
-              const descriptions: Record<string, string> = {
-                PERSON_MISSING: "No face detected in camera view.",
-                MULTIPLE_PEOPLE: "Multiple faces detected in camera view.",
-                PROLONGED_GAZE_DEVIATION: "Prolonged gaze deviation detected.",
-                CAMERA_CONDITION_WARNING: "Camera condition is poor (e.g., lighting or obstruction)."
-              };
-              
-              const metadata = {
-                model: "blazeface-1.0",
-                modelVersion: "1.0",
-                durationMs,
-                faceCount,
-                confidence
-              };
-              
-              reportEvent(type, severity, descriptions[type] || "AI detection triggered", metadata);
-            }, [reportEvent])}
+            onDisconnect={handleCameraDisconnect}
+            onReconnect={handleCameraReconnect}
+            onAIEvent={handleCameraAIEvent}
           />
 
           {/* Question Navigator — desktop only; mobile uses the drawer triggered by the nav button */}

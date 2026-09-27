@@ -7,6 +7,7 @@ import type { AttemptStatus } from "@prisma/client";
 const LEGAL_TRANSITIONS: Partial<Record<AttemptStatus, AttemptStatus[]>> = {
   CREATED: ["IN_PROGRESS"],
   IN_PROGRESS: ["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED", "TERMINATED", "EXPIRED"], // IN_PROGRESS→IN_PROGRESS for idempotency
+  EXPIRED: ["SUBMITTED", "EXPIRED"], // Allow manual submit after expiry if UI allows
 };
 
 export function isLegalTransition(

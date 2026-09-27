@@ -103,7 +103,7 @@ export function ProctoringGuard({
       // If window blurs but visibility didn't trigger
       if (!document.hidden) {
         reportViolation(
-          "TAB_SWITCH",
+          "WINDOW_BLUR",
           "LOW",
           "Browser window lost focus."
         );
@@ -145,20 +145,28 @@ export function ProctoringGuard({
     document.addEventListener("mozfullscreenchange", handleFullscreenChange);
     document.addEventListener("MSFullscreenChange", handleFullscreenChange);
 
-    // Initial check: if loaded directly or refreshed, prompt immediately
-    if (!isFullscreenActive()) {
-      setCurrentViolation({
-        type: "Fullscreen Required",
-        message:
-          "This examination must be completed in fullscreen mode. Please enter fullscreen to continue.",
-      });
-    }
+    // Grace period before showing the initial fullscreen prompt.
+    // React hydration + the browser's fullscreen API round-trip can take ~200–500ms,
+    // so an immediate check produces a false-positive violation dialog on every
+    // page refresh even when the student has legitimately been in fullscreen.
+    // The event listeners above are already active, so any genuine exit between
+    // now and when the timer fires is still caught immediately.
+    const initialCheckTimer = setTimeout(() => {
+      if (!isFullscreenActive()) {
+        setCurrentViolation({
+          type: "Fullscreen Required",
+          message:
+            "This examination must be completed in fullscreen mode. Please enter fullscreen to continue.",
+        });
+      }
+    }, 800);
 
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
       document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
       document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+      clearTimeout(initialCheckTimer);
     };
   }, [fullscreenRequired, reportViolation]);
 
@@ -178,14 +186,23 @@ export function ProctoringGuard({
       e.preventDefault();
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        reportViolation("PRINT_ATTEMPTED", "MEDIUM", "Print attempted.");
+      }
+    };
+
     document.addEventListener("copy", handleCopy);
     document.addEventListener("paste", handlePaste);
     document.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.removeEventListener("copy", handleCopy);
       document.removeEventListener("paste", handlePaste);
       document.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [reportViolation]);
 

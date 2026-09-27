@@ -40,7 +40,10 @@ export function scoreAttempt(
   const answerMap = new Map(studentAnswers.map((a) => [a.questionId, a.answer]));
   const maxScore = questions.reduce((sum, q) => sum + q.marks, 0);
 
-  let score = 0;
+  // rawScore accumulates without clamping — negative marks must be allowed to
+  // carry forward across questions. Mid-loop clamping would silently absorb
+  // penalties and inflate scores when negative marks are in use.
+  let rawScore = 0;
   const answers: AnswerResult[] = [];
 
   for (const question of questions) {
@@ -62,8 +65,8 @@ export function scoreAttempt(
       ? question.marks
       : -question.negativeMarks;
 
-    // Accumulate score, then clamp per-question to prevent negative intermediate values
-    score = Math.max(0, score + marksAwarded);
+    // Accumulate raw score — no per-question clamping
+    rawScore += marksAwarded;
 
     answers.push({
       questionId: question.id,
@@ -72,6 +75,10 @@ export function scoreAttempt(
       marksAwarded,
     });
   }
+
+  // Clamp only the final total: a student cannot score below 0 overall,
+  // but intermediate values must remain unclamped for correct accumulation.
+  const score = Math.max(0, rawScore);
   const percentage = maxScore > 0 ? (score / maxScore) * 100 : 0;
 
   return {
@@ -129,8 +136,15 @@ function checkAnswer(
   }
 
   if (question.type === "SHORT_ANSWER") {
-    // Normalize: trim whitespace, collapse multiple spaces, case-insensitive
-    const normalizeText = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+    // Normalize: strip punctuation, collapse whitespace, case-insensitive.
+    // Punctuation differences ("Newton's" vs "Newtons", trailing periods) are
+    // the most common source of false-wrong marks in tuition short-answer questions.
+    const normalizeText = (s: string) =>
+      s
+        .trim()
+        .toLowerCase()
+        .replace(/[.,/#!$%^&*;:{}=\-_`~()'"/\\]/g, "") // strip punctuation
+        .replace(/\s+/g, " ");                           // collapse whitespace
     return normalizeText(correct) === normalizeText(student);
   }
 

@@ -15,7 +15,6 @@ describe("Question Utilities (questions.ts)", () => {
       type: "MCQ",
       questionText: "What is 2+2?",
       imageUrl: null,
-      imageKey: "secret_key_1",
       options: ["1", "2", "3", "4"],
       correctAnswer: "3", // "4"
       marks: 2,
@@ -31,7 +30,6 @@ describe("Question Utilities (questions.ts)", () => {
       type: "TRUE_FALSE",
       questionText: "The sky is green.",
       imageUrl: null,
-      imageKey: "secret_key_2",
       options: null,
       correctAnswer: "false",
       marks: 1,
@@ -50,7 +48,6 @@ describe("Question Utilities (questions.ts)", () => {
     for (const q of studentQs) {
       expect((q as unknown as Record<string, unknown>).correctAnswer).toBeUndefined();
       expect((q as unknown as Record<string, unknown>).explanation).toBeUndefined();
-      expect((q as unknown as Record<string, unknown>).imageKey).toBeUndefined();
       expect(q.id).toBeDefined();
       expect(q.questionText).toBeDefined();
       expect(q.marks).toBeDefined();

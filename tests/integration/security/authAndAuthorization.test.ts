@@ -110,7 +110,7 @@ describe("Security & Authorization Integration (Neon Auth)", () => {
         email: "admin@school.edu",
         passwordHash: null,
         neonAuthUserId: "neon-admin-1",
-        role: "ADMIN",
+        role: "ADMIN" as any,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -289,7 +289,6 @@ describe("Security & Authorization Integration (Neon Auth)", () => {
           negativeMarks: 0.5,
           order: 1,
           imageUrl: null,
-          imageKey: "s3-private-key-123",
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -300,7 +299,6 @@ describe("Security & Authorization Integration (Neon Auth)", () => {
 
       expect(q).not.toHaveProperty("correctAnswer");
       expect(q).not.toHaveProperty("explanation");
-      expect(q).not.toHaveProperty("imageKey");
       expect(q.id).toBe("q-1");
       expect(q.questionText).toBe("What is 2+2?");
       expect(q.marks).toBe(2);

@@ -12,6 +12,7 @@ export const testSettingsSchema = z.object({
   showCorrectAnswers: z.boolean().default(false),
   randomizeQuestions: z.boolean().default(false),
   randomizeOptions: z.boolean().default(false),
+  gazeDetectionEnabled: z.boolean().default(true),
 });
 
 export type TestSettings = z.infer<typeof testSettingsSchema>;
@@ -111,9 +112,9 @@ export type StudentIdentityInput = z.infer<typeof studentIdentitySchema>;
 export const proctoringEventSchema = z.object({
   eventType: z.enum([
     "TAB_SWITCH", "FULLSCREEN_EXIT", "CAMERA_DISCONNECTED", "CAMERA_RECONNECTED",
-    "PERSON_MISSING", "MULTIPLE_PEOPLE", "PHONE_DETECTED", "FACE_NOT_VISIBLE",
-    "SUSPICIOUS_OBJECT", "COPY_PASTE_DETECTED", "PRINT_ATTEMPTED", "OTHER",
-    "PROLONGED_GAZE_DEVIATION", "CAMERA_CONDITION_WARNING",
+    "PERSON_MISSING", "MULTIPLE_PEOPLE",
+    "COPY_PASTE_DETECTED", "PRINT_ATTEMPTED", "OTHER",
+    "PROLONGED_GAZE_DEVIATION", "CAMERA_CONDITION_WARNING", "WINDOW_BLUR"
   ]),
   severity: z.enum(["LOW", "MEDIUM", "HIGH"]),
   description: z.string().max(500).optional(),
@@ -124,7 +125,7 @@ export const proctoringEventSchema = z.object({
     durationMs: z.number().int().nonnegative(),
     faceCount: z.number().int().nonnegative().optional(),
     confidence: z.number().min(0).max(1).optional(),
-  }).strict().optional(),
+  }).passthrough().optional(),
 });
 export type ProctoringEventInput = z.infer<typeof proctoringEventSchema>;
 

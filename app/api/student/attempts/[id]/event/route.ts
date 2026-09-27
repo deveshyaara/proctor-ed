@@ -20,6 +20,7 @@ const AUTHORITATIVE_SEVERITIES: Record<string, "LOW" | "MEDIUM" | "HIGH"> = {
   PRINT_ATTEMPTED: "MEDIUM",
   PROLONGED_GAZE_DEVIATION: "MEDIUM", // Behavioral signal indicates potential looking at off-screen resources
   CAMERA_CONDITION_WARNING: "LOW", // Quality/UX nudge, not a behavioral signal
+  WINDOW_BLUR: "LOW", // Window lost focus (not fully hidden)
   OTHER: "LOW",
 };
 
@@ -73,22 +74,36 @@ export async function POST(req: NextRequest, { params }: Params) {
           severity: authoritativeSeverity,
           description,
           confidence,
-          metadata,
+          metadata: metadata as any,
           timestamp: serverTimestamp,
         },
       });
 
-      let warningCount = attempt.warningCount;
+      // Always re-read warningCount and riskScore from inside the transaction rather than using
+      // the stale pre-tx value from `attempt`. Concurrent event calls can arrive
+      // within the same ms and both observe the same stale value, causing the
+      // auto-submit threshold check to be silently skipped on one of them.
+      let currentAttempt = await tx.attempt.findUnique({
+        where: { id },
+        select: { warningCount: true, riskScore: true },
+      });
+      let warningCount = currentAttempt?.warningCount ?? attempt.warningCount;
 
-      // Increment warning count for HIGH severity events (atomic)
+      const riskDelta = authoritativeSeverity === "HIGH" ? 5 : authoritativeSeverity === "MEDIUM" ? 3 : 1;
+      
+      const updated = await tx.attempt.update({
+        where: { id },
+        data: {
+          riskScore: { increment: riskDelta },
+          ...(authoritativeSeverity === "HIGH" ? { warningCount: { increment: 1 } } : {}),
+        },
+        select: { warningCount: true },
+      });
+      
       if (authoritativeSeverity === "HIGH") {
-        const updated = await tx.attempt.update({
-          where: { id },
-          data: { warningCount: { increment: 1 } },
-          select: { warningCount: true },
-        });
         warningCount = updated.warningCount;
       }
+
 
       return { event, warningCount };
     });

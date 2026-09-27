@@ -239,7 +239,8 @@ describe('Phase 7b — Gaze Tracking Model Integration & Conditions', () => {
       const signals = {
         PERSON_MISSING: { detected: false, confidence: 0 },
         MULTIPLE_PEOPLE: { detected: false, confidence: 0 },
-        PROLONGED_GAZE_DEVIATION: { detected: false, confidence: 0 }
+        PROLONGED_GAZE_DEVIATION: { detected: false, confidence: 0 },
+        CAMERA_CONDITION_WARNING: { detected: false, confidence: 0 }
       };
 
       for (let t = 0; t <= 5000; t += 125) {
@@ -253,12 +254,14 @@ describe('Phase 7b — Gaze Tracking Model Integration & Conditions', () => {
       const deviated = {
         PERSON_MISSING: { detected: false, confidence: 0 },
         MULTIPLE_PEOPLE: { detected: false, confidence: 0 },
-        PROLONGED_GAZE_DEVIATION: { detected: true, confidence: 0.9 }
+        PROLONGED_GAZE_DEVIATION: { detected: true, confidence: 0.9 },
+        CAMERA_CONDITION_WARNING: { detected: false, confidence: 0 }
       };
       const centered = {
         PERSON_MISSING: { detected: false, confidence: 0 },
         MULTIPLE_PEOPLE: { detected: false, confidence: 0 },
-        PROLONGED_GAZE_DEVIATION: { detected: false, confidence: 0 }
+        PROLONGED_GAZE_DEVIATION: { detected: false, confidence: 0 },
+        CAMERA_CONDITION_WARNING: { detected: false, confidence: 0 }
       };
 
       // Deviate for 1200ms
@@ -279,12 +282,14 @@ describe('Phase 7b — Gaze Tracking Model Integration & Conditions', () => {
       const centered = {
         PERSON_MISSING: { detected: false, confidence: 0 },
         MULTIPLE_PEOPLE: { detected: false, confidence: 0 },
-        PROLONGED_GAZE_DEVIATION: { detected: false, confidence: 0 }
+        PROLONGED_GAZE_DEVIATION: { detected: false, confidence: 0 },
+        CAMERA_CONDITION_WARNING: { detected: false, confidence: 0 }
       };
       const blink = {
         PERSON_MISSING: { detected: false, confidence: 0 },
         MULTIPLE_PEOPLE: { detected: false, confidence: 0 },
-        PROLONGED_GAZE_DEVIATION: { detected: true, confidence: 0.2 } // low confidence blink
+        PROLONGED_GAZE_DEVIATION: { detected: true, confidence: 0.2 }, // low confidence blink
+        CAMERA_CONDITION_WARNING: { detected: false, confidence: 0 }
       };
 
       for (let t = 0; t <= 2000; t += 125) smoother.processFrame(centered, t);
@@ -303,12 +308,14 @@ describe('Phase 7b — Gaze Tracking Model Integration & Conditions', () => {
       const typing = {
         PERSON_MISSING: { detected: false, confidence: 0 },
         MULTIPLE_PEOPLE: { detected: false, confidence: 0 },
-        PROLONGED_GAZE_DEVIATION: { detected: true, confidence: 0.85 }
+        PROLONGED_GAZE_DEVIATION: { detected: true, confidence: 0.85 },
+        CAMERA_CONDITION_WARNING: { detected: false, confidence: 0 }
       };
       const screen = {
         PERSON_MISSING: { detected: false, confidence: 0 },
         MULTIPLE_PEOPLE: { detected: false, confidence: 0 },
-        PROLONGED_GAZE_DEVIATION: { detected: false, confidence: 0 }
+        PROLONGED_GAZE_DEVIATION: { detected: false, confidence: 0 },
+        CAMERA_CONDITION_WARNING: { detected: false, confidence: 0 }
       };
 
       // Type on keyboard for 2.0 seconds
@@ -329,7 +336,8 @@ describe('Phase 7b — Gaze Tracking Model Integration & Conditions', () => {
       const deviated = {
         PERSON_MISSING: { detected: false, confidence: 0 },
         MULTIPLE_PEOPLE: { detected: false, confidence: 0 },
-        PROLONGED_GAZE_DEVIATION: { detected: true, confidence: 0.88 }
+        PROLONGED_GAZE_DEVIATION: { detected: true, confidence: 0.88 },
+        CAMERA_CONDITION_WARNING: { detected: false, confidence: 0 }
       };
 
       let confirmedEvents: any[] = [];

@@ -19,7 +19,7 @@ export async function POST() {
   });
 
   if (existingByIdentity) {
-    if (existingByIdentity.role !== "TEACHER" && existingByIdentity.role !== "ADMIN") {
+    if (existingByIdentity.role !== "TEACHER") {
       return NextResponse.json(
         { error: { code: "FORBIDDEN", message: "Teacher privileges required." } },
         { status: 403 }
@@ -38,7 +38,7 @@ export async function POST() {
     );
   }
 
-  if (existingByEmail && existingByEmail.role !== "TEACHER" && existingByEmail.role !== "ADMIN") {
+  if (existingByEmail && existingByEmail.role !== "TEACHER") {
     return NextResponse.json(
       { error: { code: "FORBIDDEN", message: "Teacher privileges required." } },
       { status: 403 }

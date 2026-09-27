@@ -6,6 +6,7 @@ export interface FaceDetectionResult {
     score: number;
   }>;
   gaze?: GazeEstimate | null;
+  error?: boolean;
 }
 
 export class FaceDetector {
@@ -77,7 +78,7 @@ export class FaceDetector {
 
   async detect(imageCanvas: HTMLCanvasElement | HTMLVideoElement): Promise<FaceDetectionResult> {
     if (!this.worker || !this.isReady) {
-      return { faces: [{ box: [0, 0, 1, 1], score: 1.0 }] };
+      return { faces: [], error: true };
     }
 
     try {
@@ -96,7 +97,7 @@ export class FaceDetector {
       });
     } catch (e) {
       console.error("FaceDetector client error:", e);
-      return { faces: [{ box: [0, 0, 1, 1], score: 1.0 }] };
+      return { faces: [], error: true };
     }
   }
 

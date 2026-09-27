@@ -113,6 +113,15 @@ export class AnswerSyncManager {
       });
 
       if (!res.ok) {
+        // 403 = attempt terminated/expired, 409 = invalid state transition.
+        // In both cases the exam is over — stop showing "error" to the student
+        // and transition to "idle" (calm) state. Retrying would always fail.
+        if (res.status === 403 || res.status === 409) {
+          this.pendingWrites.clear();
+          this.persistQueue();
+          this.onStateChange?.("idle");
+          return true; // treat as "done" — no further action needed
+        }
         return false;
       }
       return true;
@@ -155,8 +164,10 @@ export class AnswerSyncManager {
           await existingInFlight;
         }
 
-        // Check if value changed while waiting
-        const latestAnswer = this.pendingWrites.get(questionId) ?? answer;
+        // Check if value changed while waiting (or if queue was cleared by 403)
+        const latestAnswer = this.pendingWrites.get(questionId);
+        if (latestAnswer === undefined) return true;
+        
         const success = await this.saveAnswer(questionId, latestAnswer);
 
         if (success) {
