@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Proctor ED",
+    "subtitle": "AI-Powered Proctoring and Assessment Platform",
+    "output": "proctor-ed.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "Students & Teachers",
+      "pos": [40, 200],
+      "size": [140, 60]
+    },
+    {
+      "id": "webapp",
+      "type": "frontend",
+      "label": "Next.js Web App",
+      "sublabel": "React UI",
+      "pos": [260, 200],
+      "size": [140, 60]
+    },
+    {
+      "id": "vision",
+      "type": "frontend",
+      "label": "AI Vision Engine",
+      "sublabel": "ONNX Web Worker",
+      "pos": [260, 340],
+      "size": [140, 60]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Next.js APIs",
+      "sublabel": "Server Actions / Routes",
+      "pos": [480, 200],
+      "size": [140, 60]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Neon Auth",
+      "sublabel": "Session & JWT",
+      "pos": [480, 60],
+      "size": [140, 60]
+    },
+    {
+      "id": "prisma",
+      "type": "backend",
+      "label": "Prisma ORM",
+      "sublabel": "Data Access",
+      "pos": [700, 200],
+      "size": [140, 60]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "Neon Postgres",
+      "sublabel": "Serverless SQL",
+      "pos": [920, 200],
+      "size": [140, 60]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "MCP Server",
+      "sublabel": "Model Context Protocol",
+      "pos": [480, 340],
+      "size": [140, 60]
+    },
+    {
+      "id": "llm",
+      "type": "cloud",
+      "label": "AI Agents",
+      "sublabel": "Claude / Cursor",
+      "pos": [700, 340],
+      "size": [140, 60]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Proctor ED Cloud",
+      "wraps": ["webapp", "vision", "api", "auth", "prisma", "mcp"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "users",
+      "to": "webapp",
+      "variant": "emphasis"
+    },
+    {
+      "from": "webapp",
+      "to": "vision",
+      "label": "video frames",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "from": "vision",
+      "to": "api",
+      "label": "events",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "from": "webapp",
+      "to": "api",
+      "label": "HTTP/RPC",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "auth",
+      "label": "validate",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "from": "api",
+      "to": "prisma",
+      "variant": "emphasis"
+    },
+    {
+      "from": "prisma",
+      "to": "db",
+      "label": "SQL",
+      "variant": "emphasis"
+    },
+    {
+      "from": "llm",
+      "to": "mcp",
+      "label": "tool calls",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "from": "mcp",
+      "to": "api",
+      "label": "API client",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Client-side Proctoring",
+      "items": [
+        "WebRTC captures webcam and screen sharing.",
+        "ONNX Runtime executes head pose & object detection.",
+        "Generates violation events locally to reduce server load."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Backend Services",
+      "items": [
+        "Next.js App Router for frontend and API endpoints.",
+        "Prisma ORM abstracts database schema & migrations.",
+        "Neon manages both serverless Postgres and Authentication."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Agent Integration",
+      "items": [
+        "MCP Server exposes ProctorED APIs to external LLMs.",
+        "Allows AI agents to list tests, start attempts, and check results."
+      ]
+    }
+  ]
+}
